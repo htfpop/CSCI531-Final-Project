@@ -1,13 +1,11 @@
 import socket
 import pickle
-import pydevd_pycharm
 from cryptography.hazmat.primitives.asymmetric import dh
 from cryptography.hazmat.primitives.asymmetric.dh import DHParameters, DHPrivateKey, DHPublicKey
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes, serialization
 
 
-# pydevd_pycharm.settrace('localhost', port=8888, stdoutToServer=True, stderrToServer=True)
 class Server:
     def __init__(self, params=None, priv=None, shared=None):
         self.params: DHParameters = params
@@ -106,29 +104,33 @@ def serv_post_connect(serv: Server, client: socket):
     print(f'[DEBUG]: Generating Shared Secret')
     print(f'[DEBUG]: Sending parameters')
     temp1 = serv.params.parameter_numbers()
-    pk_server = serv.priv.public_key().public_numbers().y
-    p = temp1.p
-    q = temp1.g
+    pk_server = serv.priv.public_key().public_numbers().y.to_bytes(length=128, byteorder='big')
+    p = temp1.p.to_bytes(length=128, byteorder='big')
+    g = temp1.g.to_bytes(length=1, byteorder='big')
 
     print(f'[DEBUG]: Sending prime (p) to client')
-    client.sendall(bytes(p))
-    print(f'[DEBUG]: Sent: {p} to client')
+    client.sendall(p)
+    #print(f'[DEBUG]: Sent: {p} to client')
+    print(f'[DEBUG]: Sent: prime (p) to client')
+    print(' '.join('{:02x}'.format(x) for x in p))
 
-    print(f'[DEBUG]: Sending generator (g) to client')
-    client.sendall(bytes(q))
-    print(f'[DEBUG]: Sent: {q} to client')
+    print(f'[DEBUG]: Sending generator (q) to client')
+    client.sendall(g)
+    #print(f'[DEBUG]: Sent: {g} to client')
+    print(f'[DEBUG]: Sent: generator (g) to client')
+    print(' '.join('{:02x}'.format(x) for x in g))
 
     print(f'[DEBUG]: public key (pk_server) to client')
-    client.sendall(bytes(pk_server))
-    print(f'[DEBUG]: Sent: {pk_server} to client')
-
-
-
+    client.sendall(pk_server)
+    #print(f'[DEBUG]: Sent: {pk_server} to client')
+    print(f'[DEBUG]: Sent: server public key (pk_server) to client')
+    print(' '.join('{:02x}'.format(x) for x in pk_server))
 
 
 def test_server():
     print("---Server---")
 
+    # generate Diffie-Hellman parameters/private/public keys
     serv = crypto_service()
 
     # create a TCP/IP socket
@@ -155,6 +157,6 @@ def dhell():
 
 
 if __name__ == "__main__":
-#    dhell()
+    #    dhell()
     test_server()
 #    main()
