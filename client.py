@@ -72,22 +72,22 @@ def client_post_connect(client_socket: socket):
 
     print(f'[DEBUG]: Receiving prime (p) from server')
     p = client_socket.recv(1024)
-    #print(f'[DEBUG]: Received prime {p} from server')
+    # print(f'[DEBUG]: Received prime {p} from server')
     print(' '.join('{:02x}'.format(x) for x in p))
 
     print(f'[DEBUG]: Receiving generator (g) from server')
     g = client_socket.recv(2)
-    #print(f'[DEBUG]: Received generator {g} from server')
+    # print(f'[DEBUG]: Received generator {g} from server')
     print(' '.join('{:02x}'.format(x) for x in g))
 
     print(f'[DEBUG]: Receiving public key (pk_client) from server')
     pk_client = client_socket.recv(1024)
-    #print(f'[DEBUG]: Received generator {pk_client} from server')
+    # print(f'[DEBUG]: Received generator {pk_client} from server')
     print(' '.join('{:02x}'.format(x) for x in pk_client))
 
-    #params: DHParameterNumbers = dh.DHParameterNumbers(p, g)
-    #client_secret: DHPrivateKey = params.generate_private_key()
-    #client_public: DHPublicKey = client_secret.public_key()
+    # params: DHParameterNumbers = dh.DHParameterNumbers(p, g)
+    # client_secret: DHPrivateKey = params.generate_private_key()
+    # client_public: DHPublicKey = client_secret.public_key()
 
     # shared_secret = client_secret.exchange(pk_client)
 
@@ -108,6 +108,13 @@ def test_client():
     client_socket.close()
 
 
+def test():
+    x = 500
+    #print("hello world" + x)
+    print("hello world {}".format(x))
+
+
 if __name__ == "__main__":
-    test_client()
+    test()
+#    test_client()
 #    main()
