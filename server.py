@@ -1,16 +1,17 @@
 import socket
 import pickle
 from cryptography.hazmat.primitives.asymmetric import dh
-from cryptography.hazmat.primitives.asymmetric.dh import DHParameters, DHPrivateKey, DHPublicKey
+from cryptography.hazmat.primitives.asymmetric.dh import DHParameters, DHPrivateKey, DHPublicKey, DHParameterNumbers
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes, serialization
 
 
 class Server:
-    def __init__(self, params=None, priv=None, public=None):
+    def __init__(self, params=None, priv=None, public=None, shared=None):
         self.params: DHParameters = params
         self.priv: DHPrivateKey = priv
         self.public: DHPublicKey = public
+        self.shared: bytes = shared
 
     def get_params(self): return self.get_params
 
@@ -114,19 +115,52 @@ def serv_post_connect(serv: Server, client: socket):
     print(f'[DEBUG]: Sent: prime (p) to client')
     print(' '.join('{:02x}'.format(x) for x in p))
 
-    print(f'[DEBUG]: Sending generator (q) to client')
+    print(f'[DEBUG]: Sending generator (g) to client')
     client.sendall(g)
     # print(f'[DEBUG]: Sent: {g} to client')
     print(f'[DEBUG]: Sent: generator (g) to client')
     print(' '.join('{:02x}'.format(x) for x in g))
 
-    print(f'[DEBUG]: public key (pk_server) to client')
+    print(f'[DEBUG]: sending public key (pk_server) to client')
     client.sendall(pk_server)
     # print(f'[DEBUG]: Sent: {pk_server} to client')
     print(f'[DEBUG]: Sent: server public key (pk_server) to client')
     print(' '.join('{:02x}'.format(x) for x in pk_server))
 
+    print(f'[DEBUG]: Receiving pk (pk_client) from client')
+    c_pk = client.recv(1024)
+    # print(f'[DEBUG]: Sent: {pk_server} to client')
+    print(' '.join('{:02x}'.format(x) for x in c_pk))
 
+    y_int = int.from_bytes(c_pk, byteorder="big")
+
+    nums: DHParameterNumbers = dh.DHParameterNumbers(serv.params.parameter_numbers().p, serv.params.parameter_numbers().g)
+    params = nums.parameters()
+    peer_pub = dh.DHPublicNumbers(y_int, nums)
+
+    print(f'[DEBUG]: SHARED SECRET')
+    shared = serv.priv.exchange(peer_pub.public_key())
+    print(' '.join('{:02x}'.format(x) for x in shared))
+
+    serv.shared = shared
+
+
+def check_shared(serv: Server, client: socket):
+    print(f'[DEBUG]: Check shared secret')
+    client_shared = client.recv(1024)
+
+    mismatch_flag = False
+    if client_shared != serv.shared:
+        mismatch_flag = True
+
+    if mismatch_flag:
+        print(f'[DEBUG]: SHARED SECRET MISMATCH')
+        client.close()
+    else:
+        print(f'[DEBUG]: Sending shared to client')
+        client.sendall(serv.shared)
+
+    print(f'[DEBUG]: GOOD SHARED SECRET')
 def test_server():
     print("---Server---")
 
@@ -141,6 +175,9 @@ def test_server():
 
     # DH key exchange
     serv_post_connect(serv, client)
+
+    # check shared secret
+    check_shared(serv, client)
 
     print(f'[Server]: Closing connection')
     server_socket.close()
