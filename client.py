@@ -2,9 +2,6 @@ import socket
 import stdiomask
 from cryptography.hazmat.primitives.asymmetric import dh
 from cryptography.hazmat.primitives.asymmetric.dh import DHParameters, DHPrivateKey, DHPublicKey, DHParameterNumbers
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.serialization import load_der_public_key
 
 
 class Client:
@@ -21,14 +18,13 @@ class Client:
     def get_shared(self): return self.shared
 
 
-def main():
-    print("---Client---")
-    email = input("[Client]: Enter Email: ")
-    password = stdiomask.getpass(prompt="[Client]: Password:", mask="*")
-    print(f'[DEBUG]: {email}:{password}')
-    client_handler(email, password)
-
-
+"""
+Function    : client_handler()
+Description : Loopback Test to ensure server received client's email and password
+Parameters  : email - email string
+              password - password string
+Outputs     : None
+"""
 def client_handler(email, password):
     # create a TCP/IP socket
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -49,6 +45,12 @@ def client_handler(email, password):
     client_socket.close()
 
 
+"""
+Function    : client_pre_connect()
+Description : Perform simple handshake to ensure stability of connection to server
+Parameters  : client_socket - socket object used for transmission and reception
+Outputs     : None
+"""
 def client_pre_connect(client_socket):
     # connect the socket to the server's IP address and port
     server_address = ('localhost', 8888)
@@ -69,22 +71,26 @@ def client_pre_connect(client_socket):
         print(f'[DEBUG]: Valid handshake received!')
 
 
+"""
+Function    : client_post_connect()
+Description : Receive prime (p), generator (g), and server's public key (pk_serv)
+              Compute shared secret
+Parameters  : client_socket - socket object used for transmission and reception
+Outputs     : None
+"""
 def client_post_connect(client_socket: socket):
     print(f'[DEBUG]: --- Generating Shared Secret ---')
 
     print(f'[DEBUG]: Receiving prime (p) from server')
     p = client_socket.recv(1024)
-    # print(f'[DEBUG]: Received prime {p} from server')
     print(' '.join('{:02x}'.format(x) for x in p))
 
     print(f'[DEBUG]: Receiving generator (g) from server')
     g = client_socket.recv(2)
-    # print(f'[DEBUG]: Received generator {g} from server')
     print(' '.join('{:02x}'.format(x) for x in g))
 
     print(f'[DEBUG]: Receiving public key (pk_client) from server')
     pk_client = client_socket.recv(1024)
-    # print(f'[DEBUG]: Received generator {pk_client} from server')
     print(' '.join('{:02x}'.format(x) for x in pk_client))
 
     p_int = int.from_bytes(p, byteorder="big")
@@ -115,14 +121,14 @@ def client_post_connect(client_socket: socket):
     return client
 
 
-def gen_key():
-    c_params = dh.generate_parameters(generator=2, key_size=1024)
-    c_priv_key = c_params.generate_private_key()
-    c_pub_key = c_params.generate_private_key().public_key()
-
-    return Client(c_params, c_priv_key, c_pub_key)
-
-
+"""
+Function    : check_shared()
+Description : After performing DH key exchange, check 128 byte data with server
+              Client will send over shared secret first
+Parameters  : client - client object used for storage of shared secret, and private keys
+              client_socket - socket object used for sending and receiving data
+Outputs     : None
+"""
 def check_shared(client: Client, client_socket: socket):
     print(f'[DEBUG]: Check shared secret')
     client_socket.sendall(client.shared)
@@ -141,6 +147,12 @@ def check_shared(client: Client, client_socket: socket):
         print("GOOD SHARED SECRET")
 
 
+"""
+Function    : test_client()
+Description : Test socket connection, handshake, and DH key exchange
+Parameters  : None
+Outputs     : None
+"""
 def test_client():
     print("---Client---")
 
@@ -157,6 +169,22 @@ def test_client():
 
     print(f'[Client]: Closing connection')
     client_socket.close()
+
+
+"""
+Function    : main()
+Description : Main entry point -- currently not used due to testing
+Parameters  : None
+Outputs     : None
+"""
+
+
+def main():
+    print("---Client---")
+    email = input("[Client]: Enter Email: ")
+    password = stdiomask.getpass(prompt="[Client]: Password:", mask="*")
+    print(f'[DEBUG]: {email}:{password}')
+    client_handler(email, password)
 
 
 if __name__ == "__main__":

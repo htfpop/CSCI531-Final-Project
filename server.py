@@ -1,9 +1,6 @@
 import socket
-import pickle
 from cryptography.hazmat.primitives.asymmetric import dh
 from cryptography.hazmat.primitives.asymmetric.dh import DHParameters, DHPrivateKey, DHPublicKey, DHParameterNumbers
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.primitives import hashes, serialization
 
 
 class Server:
@@ -31,6 +28,12 @@ class Public_Packet:
     def get_shared(self): return self.shared
 
 
+"""
+Function    : main()
+Description : main function used for accepting client requests to connect
+Parameters  : None
+Outputs     : None
+"""
 def main():
     # create a TCP/IP socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -62,6 +65,12 @@ def main():
         client_socket.close()
 
 
+"""
+Function    : serv_pre_connect()
+Description : Perform simple handshake to ensure stability of connection to client
+Parameters  : server_socket - socket object used for transmission and reception
+Outputs     : client_socket - instance of client currently connected
+"""
 def serv_pre_connect(server_socket: socket):
     # bind the socket to a specific IP address and port
     server_address = ('localhost', 8888)
@@ -93,6 +102,12 @@ def serv_pre_connect(server_socket: socket):
     return client_socket
 
 
+"""
+Function    : crypto_service()
+Description : generate DH parameters (g, p, pk_serv)
+Parameters  : None
+Outputs     : Server - Server object
+"""
 def crypto_service():
     params = dh.generate_parameters(generator=2, key_size=1024)
     priv_key = params.generate_private_key()
@@ -101,6 +116,14 @@ def crypto_service():
     return Server(params, priv_key, pub_key)
 
 
+"""
+Function    : serv_post_connect()
+Description : Transmit prime (p), generator (g), and server's public key (pk_serv),
+              receive client's public key, and computer shared secret
+Parameters  : Server - server object
+              client - currently connected client
+Outputs     : None
+"""
 def serv_post_connect(serv: Server, client: socket):
     print(f'[DEBUG]: Generating Shared Secret')
     print(f'[DEBUG]: Sending parameters')
@@ -134,7 +157,8 @@ def serv_post_connect(serv: Server, client: socket):
 
     y_int = int.from_bytes(c_pk, byteorder="big")
 
-    nums: DHParameterNumbers = dh.DHParameterNumbers(serv.params.parameter_numbers().p, serv.params.parameter_numbers().g)
+    nums: DHParameterNumbers = dh.DHParameterNumbers(serv.params.parameter_numbers().p,
+                                                     serv.params.parameter_numbers().g)
     params = nums.parameters()
     peer_pub = dh.DHPublicNumbers(y_int, nums)
 
@@ -145,6 +169,14 @@ def serv_post_connect(serv: Server, client: socket):
     serv.shared = shared
 
 
+"""
+Function    : check_shared()
+Description : After performing DH key exchange, check 128 byte data with server
+              Client will send over shared secret first
+Parameters  : serv - server object used for storage of shared secret, and private keys
+              client - socket object used for sending and receiving data
+Outputs     : None
+"""
 def check_shared(serv: Server, client: socket):
     print(f'[DEBUG]: Check shared secret')
     client_shared = client.recv(1024)
@@ -161,6 +193,14 @@ def check_shared(serv: Server, client: socket):
         client.sendall(serv.shared)
 
     print(f'[DEBUG]: GOOD SHARED SECRET')
+
+
+"""
+Function    : test_server()
+Description : Test socket connection, handshake, and DH key exchange
+Parameters  : None
+Outputs     : None
+"""
 def test_server():
     print("---Server---")
 
