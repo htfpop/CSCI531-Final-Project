@@ -2,6 +2,11 @@ import socket
 import stdiomask
 from cryptography.hazmat.primitives.asymmetric import dh
 from cryptography.hazmat.primitives.asymmetric.dh import DHParameters, DHPrivateKey, DHPublicKey, DHParameterNumbers
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.ciphers.algorithms import AES
+
+SUCCESS = 0x00000000
+FAILURE = 0xFFFFFFFF
 
 
 class Client:
@@ -25,6 +30,8 @@ Parameters  : email - email string
               password - password string
 Outputs     : None
 """
+
+
 def client_handler(email, password):
     # create a TCP/IP socket
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -51,6 +58,8 @@ Description : Perform simple handshake to ensure stability of connection to serv
 Parameters  : client_socket - socket object used for transmission and reception
 Outputs     : None
 """
+
+
 def client_pre_connect(client_socket):
     # connect the socket to the server's IP address and port
     server_address = ('localhost', 8888)
@@ -78,6 +87,8 @@ Description : Receive prime (p), generator (g), and server's public key (pk_serv
 Parameters  : client_socket - socket object used for transmission and reception
 Outputs     : None
 """
+
+
 def client_post_connect(client_socket: socket):
     print(f'[DEBUG]: --- Generating Shared Secret ---')
 
@@ -86,7 +97,7 @@ def client_post_connect(client_socket: socket):
     print(' '.join('{:02x}'.format(x) for x in p))
 
     print(f'[DEBUG]: Receiving generator (g) from server')
-    g = client_socket.recv(2)
+    g = client_socket.recv(1)
     print(' '.join('{:02x}'.format(x) for x in g))
 
     print(f'[DEBUG]: Receiving public key (pk_client) from server')
@@ -129,22 +140,26 @@ Parameters  : client - client object used for storage of shared secret, and priv
               client_socket - socket object used for sending and receiving data
 Outputs     : None
 """
+
+
 def check_shared(client: Client, client_socket: socket):
     print(f'[DEBUG]: Check shared secret')
     client_socket.sendall(client.shared)
+    mismatch_flag = False
 
     print(f'[DEBUG]: Receiving shared from server')
     server_shared = client_socket.recv(1024)
 
-    mismatch_flag = False
     if server_shared != client.shared:
         mismatch_flag = True
 
     if mismatch_flag:
         print(f'[DEBUG]: SHARED SECRET MISMATCH')
         client_socket.close()
+        return FAILURE
     else:
         print("GOOD SHARED SECRET")
+        return SUCCESS
 
 
 """
@@ -153,8 +168,11 @@ Description : Test socket connection, handshake, and DH key exchange
 Parameters  : None
 Outputs     : None
 """
+
+
 def test_client():
     print("---Client---")
+    status = FAILURE
 
     # create a TCP/IP socket
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -165,10 +183,41 @@ def test_client():
     # perform DH Key Exchange
     client = client_post_connect(client_socket)
 
-    check_shared(client, client_socket)
+    status = check_shared(client, client_socket)
+
+   # if status == SUCCESS:
+   #     status = transmit_msg(client, client_socket)
 
     print(f'[Client]: Closing connection')
     client_socket.close()
+
+
+def transmit_msg(client: Client, serv: socket):
+    status = FAILURE
+    test_msg = b"Read EHR"
+    print(f'[Client]: Transmitting encrypted message')
+
+    key = client.get_shared()
+
+    print(' '.join('{:02x}'.format(x) for x in key))
+
+    cipher = Cipher(algorithms.AES(client.shared), modes.ECB())
+    encryptor = cipher.encryptor()
+    ct = encryptor.update(test_msg) + encryptor.finalize()
+
+    print(f'[Client]: Cipher text - {ct}')
+
+    decryptor = cipher.decryptor()
+    pt = decryptor.update(ct) + decryptor.finalize()
+
+    print(f'[Client]: Plaintext - {pt}')
+
+    if pt == ct:
+        status = SUCCESS
+    else:
+        status = FAILURE
+
+    return status
 
 
 """

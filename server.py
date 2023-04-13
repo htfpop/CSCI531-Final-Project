@@ -2,6 +2,9 @@ import socket
 from cryptography.hazmat.primitives.asymmetric import dh
 from cryptography.hazmat.primitives.asymmetric.dh import DHParameters, DHPrivateKey, DHPublicKey, DHParameterNumbers
 
+SUCCESS = 0x00000000
+FAILURE = 0xFFFFFFFF
+
 
 class Server:
     def __init__(self, params=None, priv=None, public=None, shared=None):
@@ -34,6 +37,8 @@ Description : main function used for accepting client requests to connect
 Parameters  : None
 Outputs     : None
 """
+
+
 def main():
     # create a TCP/IP socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -71,6 +76,8 @@ Description : Perform simple handshake to ensure stability of connection to clie
 Parameters  : server_socket - socket object used for transmission and reception
 Outputs     : client_socket - instance of client currently connected
 """
+
+
 def serv_pre_connect(server_socket: socket):
     # bind the socket to a specific IP address and port
     server_address = ('localhost', 8888)
@@ -108,6 +115,8 @@ Description : generate DH parameters (g, p, pk_serv)
 Parameters  : None
 Outputs     : Server - Server object
 """
+
+
 def crypto_service():
     params = dh.generate_parameters(generator=2, key_size=1024)
     priv_key = params.generate_private_key()
@@ -124,6 +133,8 @@ Parameters  : Server - server object
               client - currently connected client
 Outputs     : None
 """
+
+
 def serv_post_connect(serv: Server, client: socket):
     print(f'[DEBUG]: Generating Shared Secret')
     print(f'[DEBUG]: Sending parameters')
@@ -170,14 +181,22 @@ def serv_post_connect(serv: Server, client: socket):
 
 
 """
-Function    : check_shared()
+Function    : 
 Description : After performing DH key exchange, check 128 byte data with server
               Client will send over shared secret first
-Parameters  : serv - server object used for storage of shared secret, and private keys
-              client - socket object used for sending and receiving data
-Outputs     : None
+Parameters  : serv - 
+              client - 
+Outputs     : 
 """
+
+
 def check_shared(serv: Server, client: socket):
+    """
+    check_shared()
+    :param serv: server object used for storage of shared secret, and private keys
+    :param client: socket object used for sending and receiving data
+    :return: None
+    """
     print(f'[DEBUG]: Check shared secret')
     client_shared = client.recv(1024)
 
@@ -188,11 +207,12 @@ def check_shared(serv: Server, client: socket):
     if mismatch_flag:
         print(f'[DEBUG]: SHARED SECRET MISMATCH')
         client.close()
+        return FAILURE
     else:
+        print(f'[DEBUG]: GOOD SHARED SECRET')
         print(f'[DEBUG]: Sending shared to client')
         client.sendall(serv.shared)
-
-    print(f'[DEBUG]: GOOD SHARED SECRET')
+        return SUCCESS
 
 
 """
@@ -201,8 +221,11 @@ Description : Test socket connection, handshake, and DH key exchange
 Parameters  : None
 Outputs     : None
 """
+
+
 def test_server():
     print("---Server---")
+    status = FAILURE
 
     # generate Diffie-Hellman parameters/private/public keys
     serv = crypto_service()
@@ -217,10 +240,20 @@ def test_server():
     serv_post_connect(serv, client)
 
     # check shared secret
-    check_shared(serv, client)
+    status = check_shared(serv, client)
+
+    # if status == SUCCESS:
+    #    status = receive_msg(serv, client)
 
     print(f'[Server]: Closing connection')
     server_socket.close()
+
+
+def receive_msg(serv: Server, client: socket):
+    status = FAILURE
+    print(f'[Server]: Receiving encrypted message')
+
+    return status
 
 
 if __name__ == "__main__":
