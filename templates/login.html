@@ -1,0 +1,19 @@
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title>Patient Login</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+<div id="part1" class="flex-container" style="flex-direction:column">
+    <p style="font-size:x-large; margin: 25px; letter-spacing: 1px;"> Patient Login </p>
+    <FORM id="login" action='/login' method="POST" class="flex-container">
+        <label for="username"></label><input id="username" name="username" placeholder="Username" required>
+        <label for="password"></label><input type="password" id="password" name="password" placeholder="Password" required>
+        <button class="button" type="submit" style="border-left: 2px solid #e8dfdf7a">  Login </button>
+        <button class="button" type="reset" style="border-left: 2px solid #e8dfdf7a"> Clear</button>
+    </FORM>
+</div>
+</body>
+</html>
