@@ -4,14 +4,42 @@ import jwt
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, render_template, session, request, jsonify, make_response, redirect, url_for
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.sql import func
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '8da27f76c24c13b7f11690da'  # os.urandom(12).hex()
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(seconds=30)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///patients.sqlite3'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
 
 
-def token_required(func):
-    @wraps(func)
+class Patients(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    firstname = db.Column(db.String(100), nullable=False)
+    lastname = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(80), unique=True, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
+
+    def __init__(self, username: str, name: str, email: str):
+        self.username = username
+        self.name = name
+        self.email = email
+
+    @staticmethod
+    def create(username, name, email):  # create new user
+        new_user = Patients(username, name, email)
+        db.session.add(new_user)
+        db.session.commit()
+
+    def __repr__(self):
+        return f'<Patient {self.firstname}>'
+
+
+def token_required(function):
+    @wraps(function)
     def decorated(*args, **kwargs):
         token = request.args.get('token')
         if not token:
@@ -22,7 +50,7 @@ def token_required(func):
         except jwt.InvalidTokenError as e:
             return jsonify({'ALERT': f'Invalid Token: {str(e)}'})
 
-        return func(*args, **kwargs)
+        return function(*args, **kwargs)
 
     return decorated
 
@@ -56,6 +84,7 @@ def auth():
         'NewToken': new_token
     })
 
+
 @app.route('/')
 def home():
     if not session.get('logged in'):
@@ -86,4 +115,5 @@ def login():
 
 
 if __name__ == '__main__':
+    Patients.create("test", "chris", "chris")
     app.run(debug=True)
