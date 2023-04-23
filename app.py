@@ -1,5 +1,5 @@
+import random
 from urllib.parse import urlencode
-
 import jwt
 from datetime import datetime, timedelta
 from functools import wraps
@@ -10,7 +10,7 @@ from sqlalchemy.sql import func
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '8da27f76c24c13b7f11690da'  # os.urandom(12).hex()
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(seconds=30)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///patients.sqlite3'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///patient.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -23,16 +23,29 @@ class Patients(db.Model):
     email = db.Column(db.String(80), unique=True, nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
-    def __init__(self, username: str, name: str, email: str):
-        self.username = username
-        self.name = name
+    def __init__(self, firstname: str, lastname: str, email: str):
+        self.id = random.randint(1, 1000000)
+        self.firstname = firstname
+        self.lastname = lastname
         self.email = email
 
     @staticmethod
-    def create(username, name, email):  # create new user
-        new_user = Patients(username, name, email)
+    def create(first, last, email):  # create new user
+        new_user = Patients(firstname=first, lastname=last, email=email)
         db.session.add(new_user)
         db.session.commit()
+
+    @staticmethod
+    def get_id(self): return self.id
+
+    @staticmethod
+    def get_firstname(self): return self.firstname
+
+    @staticmethod
+    def get_lastname(self): return self.lastname
+
+    @staticmethod
+    def get_email(self): return self.email
 
     def __repr__(self):
         return f'<Patient {self.firstname}>'
@@ -115,5 +128,14 @@ def login():
 
 
 if __name__ == '__main__':
-    Patients.create("test", "chris", "chris")
-    app.run(debug=True)
+    # print("hello world")
+
+    with app.app_context():
+        db.create_all()
+        patients: db.Model = Patients.query.order_by(Patients.firstname).all()
+        for patient in patients:
+            dt: datetime = patient.created_at.strftime('%Y-%m-%d %H:%M:%S')
+            print(
+                f'{patient.firstname.ljust(10)} {patient.lastname.ljust(10)} {patient.email.ljust(15)} '
+                f'{str(patient.id).ljust(10)} {dt.ljust(20)}')
+            #print(patient.firstname, patient.lastname, patient.email, patient.id, patient.created_at)
