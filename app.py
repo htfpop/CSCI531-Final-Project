@@ -127,15 +127,38 @@ def login():
         return make_response('Unable to verify', 403, {'WWW-Authenticate': 'Basic Realm:"Authentication Failed"'})
 
 
-if __name__ == '__main__':
-    # print("hello world")
+def db_check():
+    """
+    Check if DB is instantiated
+    <WARN> I found my database located here (might be different depending on setup):                     <WARN>
+    <WARN> %APPDATA%\\Local\\JetBrains\\Toolbox\\apps\\PyCharm-P\\ch-0\\231.8109.197\\jbr\\bin\\instance <WARN>
 
+    :return: None
+    """
+
+    if db.session.query(Patients).count() == 0:
+        for t in range(1, 11, 1):
+            FN = 'Test' + str(t) + 'FN'
+            LN = 'Test' + str(t) + 'LN'
+            email = 'T' + str(t) + '@usc.edu'
+            Patients.create(FN, LN, email)
+
+        for a in range(1, 4, 1):
+            FN = 'Audit' + str(a) + 'FN'
+            LN = 'Audit' + str(a) + 'LN'
+            email = 'Auditor' + str(a) + '@usc.edu'
+            Patients.create(FN, LN, email)
+    else:
+        print('SQL Table already populated')
+
+
+if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-        patients: db.Model = Patients.query.order_by(Patients.firstname).all()
+        db_check()
+        patients: db.Model = Patients.query.order_by(Patients.email).all()
         for patient in patients:
-            dt: datetime = patient.created_at.strftime('%Y-%m-%d %H:%M:%S')
+            dt: str = patient.created_at.strftime('%Y-%m-%d %H:%M:%S')
             print(
-                f'{patient.firstname.ljust(10)} {patient.lastname.ljust(10)} {patient.email.ljust(15)} '
+                f'{patient.firstname.ljust(10)} {patient.lastname.ljust(10)} {patient.email.ljust(20)} '
                 f'{str(patient.id).ljust(10)} {dt.ljust(20)}')
-            #print(patient.firstname, patient.lastname, patient.email, patient.id, patient.created_at)
