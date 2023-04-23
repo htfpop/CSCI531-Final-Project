@@ -7,9 +7,12 @@ from flask import Flask, render_template, session, request, jsonify, make_respon
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.sql import func
 
+# GLOBAL
+TIMEOUT = timedelta(seconds=100)
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '8da27f76c24c13b7f11690da'  # os.urandom(12).hex()
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(seconds=30)
+app.config['PERMANENT_SESSION_LIFETIME'] = TIMEOUT
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///patient.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -86,7 +89,7 @@ def auth():
         return jsonify({'Message': 'Session has timed out'})
 
     # Update the expiration time to extend the session
-    new_expiration_time = datetime.utcnow() + timedelta(seconds=30)
+    new_expiration_time = datetime.utcnow() + TIMEOUT
     payload['expiration'] = str(new_expiration_time)
     new_token = jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
 
@@ -100,14 +103,18 @@ def auth():
 
 @app.route('/')
 def home():
-    if not session.get('logged in'):
-        return render_template('login.html')
-    else:
-        return 'Logged in Currently'
+    return render_template('index.html')
 
+@app.route('/login.html', methods=['GET'])
+def login():
+    return render_template('login.html')
+
+@app.route('/signup.html', methods=['GET'])
+def signup():
+    return render_template('signup.html')
 
 @app.route('/login', methods=['POST'])
-def login():
+def post_login():
     if request.form['username'] and request.form['password'] == '123456':
         session['logged_in'] = True
         session.permanent = True
@@ -156,9 +163,10 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
         db_check()
-        patients: db.Model = Patients.query.order_by(Patients.email).all()
-        for patient in patients:
-            dt: str = patient.created_at.strftime('%Y-%m-%d %H:%M:%S')
-            print(
-                f'{patient.firstname.ljust(10)} {patient.lastname.ljust(10)} {patient.email.ljust(20)} '
-                f'{str(patient.id).ljust(10)} {dt.ljust(20)}')
+    app.run(debug=True)
+    # patients: db.Model = Patients.query.order_by(Patients.email).all()
+    # for patient in patients:
+    #     dt: str = patient.created_at.strftime('%Y-%m-%d %H:%M:%S')
+    #     print(
+    #         f'{patient.firstname.ljust(10)} {patient.lastname.ljust(10)} {patient.email.ljust(20)} '
+    #         f'{str(patient.id).ljust(10)} {dt.ljust(20)}')

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="utf-8">
+<head>
+    <meta charset="UTF-8">
+    <title>Signup | EHR Portal</title>
+</head>
+<body>
+<h1>New Patient Signup</h1>
+
+<form id="signup" action='/signup' method="POST" class="flex-container">
+    <label for="new-username">New Username:</label>
+    <input type="text" id="new-username" name="new-username" required><br>
+
+    <label for="new-password">New Password:</label>
+    <input type="password" id="new-password" name="new-password" required><br>
+
+    <label for="confirm-password">Confirm Password:</label>
+    <input type="password" id="confirm-password" name="confirm-password" required><br>
+
+    <button class="button" type="submit" style="border-left: 2px solid #e8dfdf7a">  Signup </button>
+    <button class="button" type="reset" style="border-left: 2px solid #e8dfdf7a"> Clear</button>
+</form>
+<br><br>
+<a href="login.html">Already have an account? Login here.</a>
