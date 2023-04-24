@@ -1,17 +1,23 @@
 import socket
+
+from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.primitives.asymmetric import dh
 from cryptography.hazmat.primitives.asymmetric.dh import DHParameters, DHPrivateKey, DHPublicKey, DHParameterNumbers
+from cryptography.hazmat.primitives.ciphers import algorithms, Cipher, modes
+from cryptography.hazmat.primitives.hashes import SHA256
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 SUCCESS = 0x00000000
 FAILURE = 0xFFFFFFFF
 
 
 class Server:
-    def __init__(self, params=None, priv=None, public=None, shared=None):
+    def __init__(self, params=None, priv=None, public=None, shared=None, derived=None):
         self.params: DHParameters = params
         self.priv: DHPrivateKey = priv
         self.public: DHPublicKey = public
         self.shared: bytes = shared
+        self.derived = derived
 
     def get_params(self): return self.get_params
 
@@ -177,7 +183,19 @@ def serv_post_connect(serv: Server, client: socket):
     shared = serv.priv.exchange(peer_pub.public_key())
     print(' '.join('{:02x}'.format(x) for x in shared))
 
+    # CKL 4/24 update - derive 128 bit key from shared secret for AES processing
+    kdf = HKDF(algorithm=SHA256(),
+               length=16,
+               salt=None,
+               info=b'128key')
+    derived_key = kdf.derive(shared)
+
+    #DO NOT USE IN PRODUCTION!!!
+    print(f'[DEBUG]: HKDF DERIVED AES128 RED KEY')
+    print(' '.join('{:02x}'.format(x) for x in derived_key))
+
     serv.shared = shared
+    serv.derived = derived_key
 
 
 """
@@ -188,8 +206,6 @@ Parameters  : serv -
               client - 
 Outputs     : 
 """
-
-
 def check_shared(serv: Server, client: socket):
     """
     check_shared()
@@ -215,14 +231,37 @@ def check_shared(serv: Server, client: socket):
         return SUCCESS
 
 
+def check_derived(serv: Server, client: socket):
+    """
+    check_derived()
+    :param serv: server object used for storage of shared secret, and private keys
+    :param client: socket object used for sending and receiving data
+    :return: None
+    """
+    print(f'[DEBUG]: Check HKDF derived key')
+    client_derived = client.recv(1024)
+
+    mismatch_flag = False
+    if client_derived != serv.derived:
+        mismatch_flag = True
+
+    if mismatch_flag:
+        print(f'[DEBUG]: DERIVED KEY MISMATCH')
+        client.close()
+        return FAILURE
+    else:
+        print(f'[DEBUG]: GOOD DERIVED KEY')
+        print(f'[DEBUG]: Sending derived key to client')
+        client.sendall(serv.derived)
+        return SUCCESS
+
+
 """
 Function    : test_server()
 Description : Test socket connection, handshake, and DH key exchange
 Parameters  : None
 Outputs     : None
 """
-
-
 def test_server():
     print("---Server---")
     status = FAILURE
@@ -239,23 +278,58 @@ def test_server():
     # DH key exchange
     serv_post_connect(serv, client)
 
-    # check shared secret
+    # check shared secret - DO NOT USE IN PRODUCTION
     status = check_shared(serv, client)
 
-    # if status == SUCCESS:
-    #    status = receive_msg(serv, client)
+    # check derived shared AES 128 RED key - DO NOT USE IN PRODUCTION
+    if status == SUCCESS:
+        status = check_derived(serv, client)
+
+    # Decrypt simple message with AES128 that was received from client
+    if status == SUCCESS:
+        status = receive_msg(serv, client)
 
     print(f'[Server]: Closing connection')
     server_socket.close()
 
 
 def receive_msg(serv: Server, client: socket):
+    """
+    Receives 1 encrypted message from Client.py - using HKDF derived key from
+    DH shared secret
+    :param serv: instance of our server object
+    :param client: socket that receives incoming communication from client.py
+    :return: SUCCESS if decrypted message matches KNOWNANSWER // FAILURE otherwise
+    """
     status = FAILURE
+    unpadder = padding.PKCS7(128).unpadder()
+    key = serv.derived
+    KNOWNANSWER = b"Read EHR"
     print(f'[Server]: Receiving encrypted message')
+
+    ct = client.recv(1024)
+
+    try:
+        cipher = Cipher(algorithms.AES128(key), modes.ECB())
+    except ValueError:
+        print(f'[VALUE ERROR]: Invalid AES-128 Key. Have you used the right key?\nExiting.')
+        exit(-1)
+
+    decryptor = cipher.decryptor()
+    pt = decryptor.update(ct) + decryptor.finalize()
+
+    unpadderdata = unpadder.update(pt)
+    unpadderdata += unpadder.finalize()
+
+    print(f'[Server]: Plaintext - {unpadderdata}')
+
+    # Test for decrypted message from client
+    if unpadderdata == KNOWNANSWER:
+        status = SUCCESS
 
     return status
 
 
 if __name__ == "__main__":
     test_server()
-#    main()
+#   main()
