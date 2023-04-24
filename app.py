@@ -4,25 +4,33 @@ from urllib.parse import urlencode
 import jwt
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import Flask, render_template, session, request, jsonify, make_response, redirect, url_for
+from flask import Flask, render_template, session, request, jsonify, make_response, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.sql import func
 import bcrypt
 
-# GLOBAL
-TIMEOUT = timedelta(seconds=100)
+# GLOBAL CONFIG
+TIMEOUT = timedelta(seconds=300)
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '8da27f76c24c13b7f11690da'  # os.urandom(12).hex()
 app.config['PERMANENT_SESSION_LIFETIME'] = TIMEOUT
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(BASE_DIR, 'patient.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
 db = SQLAlchemy(app)
 
 
 class Patients(db.Model):
+    """
+    Patients Objects will include the following:
+    id:             Unique, and generated randomly upon signup
+    firstname:      User's first name
+    lastname:       User's last name
+    email:          Unique, email address of user
+    password_salt:  Random salt used for password hashing
+    password_hash:  User's password hash with salt applied
+    created_at:     Time of Instantiation of a user profile
+    """
     id = db.Column(db.Integer, primary_key=True)
     firstname = db.Column(db.String(100), nullable=False)
     lastname = db.Column(db.String(100), nullable=False)
@@ -32,6 +40,13 @@ class Patients(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
     def __init__(self, firstname: str, lastname: str, email: str, password: str):
+        """
+        Patients object initialization function. Password will be salted.
+        :param firstname: User's first name
+        :param lastname:  User's last name
+        :param email:     User's email address (must be unique)
+        :param password:  User's password
+        """
         self.id = random.randint(1, 1000000)
         self.firstname = firstname
         self.lastname = lastname
@@ -40,30 +55,54 @@ class Patients(db.Model):
         self.set_password(self, password=password)
 
     @staticmethod
-    def create(first, last, email, password):  # create new user
-        new_user = Patients(firstname=first, lastname=last, email=email, password=password)
-        db.session.add(new_user)
-        db.session.commit()
+    def create(first, last, email, password):
+        """
+        Add user to SQLITE database. This function will query the DB to ensure that the email address
+        passed into the signup form is UNIQUE.
+        :param first:    First Name
+        :param last:     Last Name
+        :param email:    Email Address
+        :param password: User's Password
+        :return:         T: User has been added / F: DB addition has failed
+        """
+        existing_user = Patients.query.filter_by(email=email).first()
+
+        # Check for existing user
+        if existing_user:
+            return False
+        else:
+            new_user = Patients(firstname=first, lastname=last, email=email, password=password)
+            db.session.add(new_user)
+            db.session.commit()
+            return True
 
     @staticmethod
     def get_id(self): return self.id
-
     @staticmethod
     def get_firstname(self): return self.firstname
-
     @staticmethod
     def get_lastname(self): return self.lastname
-
     @staticmethod
     def get_email(self): return self.email
-
     @staticmethod
     def set_password(self, password: str):
+        """
+        Private method that will concatenate salt with password and update the User's password hash
+        :param self:      Current Patients object
+        :param password:  User's Password (RED)
+        :return:          None
+        """
         salted_password = (password + self.password_salt).encode('utf-8')
         self.password_hash = bcrypt.hashpw(salted_password, bcrypt.gensalt()).decode('utf-8')
 
     @staticmethod
     def check_password(self, password: str) -> bool:
+        """
+        Simple method to verify a password
+        :param self:     Current Patients object
+        :param password: User's password
+        :return:         True: H(Password + Salt) matches DB // F: H(Password + Salt) does not match
+        """
         salted_password = (password + self.password_salt).encode('utf-8')
         return bcrypt.checkpw(salted_password, self.password_hash.encode('utf-8'))
 
@@ -72,6 +111,11 @@ class Patients(db.Model):
 
 
 def token_required(function):
+    """
+    Wrapper function used for ensuring JWT tokens have been established before calling subsequent functions
+    :param function: Function requiring token_required wrapping
+    :return: JSON error code or valid JWT token
+    """
     @wraps(function)
     def decorated(*args, **kwargs):
         token = request.args.get('token')
@@ -96,6 +140,10 @@ def public():
 @app.route('/auth')
 @token_required
 def auth():
+    """
+    Flask successful login with JWT
+    :return: None
+    """
     token = request.args.get('token')
     payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
     email = payload['email']
@@ -110,31 +158,49 @@ def auth():
     payload['expiration'] = str(new_expiration_time)
     new_token = jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
 
-    return jsonify({
-        'Message1': f'JWT Verified, welcome to dashboard {email}!',
-        'Message2': f'Your session ends at: {expiration_time}',
-        'Message3': f'Current time: {datetime.utcnow()}',
-        'NewToken': new_token
-    })
+    return render_template('user_dash.html')
+
+    # return jsonify({
+    #     'Message1': f'JWT Verified, welcome to dashboard {email}!',
+    #     'Message2': f'Your session ends at: {expiration_time}',
+    #     'Message3': f'Current time: {datetime.utcnow()}',
+    #     'NewToken': new_token
+    # })
 
 
 @app.route('/')
 def home():
+    """
+    Flask Homepage
+    :return: render of EHR homepage
+    """
     return render_template('index.html')
 
 
 @app.route('/login.html', methods=['GET'])
 def login():
+    """
+    Flask login page
+    :return: render of EHR login page
+    """
     return render_template('login.html')
 
 
 @app.route('/signup.html', methods=['GET'])
 def signup():
+    """
+    Flask signup page
+    :return: render of EHR signup page
+    """
     return render_template('signup.html')
 
 
 @app.route('/signup', methods=['POST'])
 def post_signup():
+    """
+    User form parsing for creation of new entry in Patients DB
+    :return: Error code / Successful login
+    """
     FN = request.form['FN']
     LN = request.form['LN']
     email = request.form['Email']
@@ -142,21 +208,22 @@ def post_signup():
     confirm_pw = request.form['confirm-password']
 
     if pw != confirm_pw:
-        return jsonify({'ALERT': f'PASSWORDS DID NOT MATCH'})
+        return render_template('err_pw_mismatch.html')
     else:
-        Patients.create(first=FN, last=LN, email=email, password=pw)
+        status = Patients.create(first=FN, last=LN, email=email, password=pw)
 
-    return jsonify({
-        'First': f'{FN}',
-        'Last': f'{LN}',
-        'Email': f'{email}',
-        'Password': f'{pw}',
-        'Confirm_PW': f'{confirm_pw}'
-    })
-
+        if status:
+            return render_template('signup_success.html')
+        else:
+            return render_template('signup_failure.html')
 
 @app.route('/login', methods=['POST'])
 def post_login():
+    """
+    Flask EHR login page
+    Check if user is within our database and generate them a JWT token for their session
+    :return: JWT token valid for TIMEOUT seconds
+    """
     email = request.form['Email']
     password = request.form['password']
 

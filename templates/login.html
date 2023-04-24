@@ -4,22 +4,21 @@
     <title>Login | EHR Portal</title>
     <link rel="stylesheet" href="style.css">
 </head>
+    <body>
+        <h1>Patient Medical Records Portal</h1>
+        <h2>Login</h2>
 
-<body>
-<h1>Patient Medical Records Portal</h1>
+        <FORM id="login" action='/login' method="POST" class="flex-container">
+            <label for="Email">Email:</label>
+            <input type="text" id="Email" name="Email" required><br>
 
-<h2>Login</h2>
-<FORM id="login" action='/login' method="POST" class="flex-container">
-    <label for="Email">Email:</label>
-    <input type="text" id="Email" name="Email" required><br>
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required><br>
 
-    <label for="password">Password:</label>
-    <input type="password" id="password" name="password" required><br>
+            <button class="button" type="submit" style="border-left: 2px solid #e8dfdf7a">  Login </button>
+            <button class="button" type="reset" style="border-left: 2px solid #e8dfdf7a"> Clear</button>
+        </form>
 
-    <button class="button" type="submit" style="border-left: 2px solid #e8dfdf7a">  Login </button>
-    <button class="button" type="reset" style="border-left: 2px solid #e8dfdf7a"> Clear</button>
-</form>
-<a href="signup.html">Don't have an account? Signup here.</a>
-
-</body>
+        <a href="signup.html">Don't have an account? Signup here.</a>
+    </body>
 </html>
