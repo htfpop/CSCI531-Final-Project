@@ -2,6 +2,7 @@ from p2pnetwork.node import Node
 import json
 import sys
 
+import AuditNotifier
 
 class FileSharingNode(Node):
 
@@ -62,6 +63,10 @@ def disconnect_node(in_node: FileSharingNode):
         in_node.disconnect_with_node(c_node)
 
 
+def do_nothing(variable):
+    print("Doing nothing with {}".format(variable))
+
+
 if __name__ == "__main__":
     peer_b = ["127.0.0.1", 9877, 'Peer_B']
     peer_c = ["127.0.0.1", 9878, 'Peer_C']
@@ -69,18 +74,41 @@ if __name__ == "__main__":
     if len(sys.argv) == 2:
         if int(sys.argv[1]) == 0:
             info = peer_b
+            notifier_config = {
+                'name': "Peer B",
+                'rate': 5,
+                'identity': {
+                    'name': "Peer B",
+                    'ip': "127.0.0.1",
+                    'node_port': 9877,
+                    'server_port': 0
+                }
+            }
         elif int(sys.argv[1]) == 1:
             info = peer_c
+            notifier_config = {
+                'name': "Peer C",
+                'rate': 5,
+                'identity': {
+                    'name': "Peer C",
+                    'ip': "127.0.0.1",
+                    'node_port': 9878,
+                    'server_port': 0
+                }
+            }
         else:
             print("Unrecognized input, exiting")
             sys.exit(1)
     else:
-        info = peer_b
+        print("Unrecognized input, exiting")
+        sys.exit(1)
 
     # Setup the node
     node = FileSharingNode(info[0], info[1], id=info[2])
+    not_serv = AuditNotifier.AuditNotifier(notifier_config, do_nothing)
 
     node.start()
+    not_serv.start()
 
     command = input("? ")
     while command != "stop":
@@ -94,5 +122,6 @@ if __name__ == "__main__":
         command = input("? ")
 
     node.stop()
+    not_serv.stop()
 
 

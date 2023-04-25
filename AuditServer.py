@@ -6,7 +6,9 @@ import hashlib
 import json
 import time
 from p2pnetwork.node import Node
+import random
 
+import AuditNotifier
 
 RESPONSE_TIMEOUT = 20
 VOTE_THRESHOLD = .5
@@ -53,28 +55,55 @@ class NodeServerComms(Node):
 
 
 class AuditServer:
-    def __init__(self, host, port, server_id):
-        self.server = NodeServerComms(host, port, server_id, self.update_status)
-        self.status = False
+    def __init__(self, host, port, server_id, notifier_config):
 
-        self.server.start()
+        self.status = False
+        self.node_identities = []
+        self.port = port
+
+        # Start Node communications
+        self.server = NodeServerComms(host, port, server_id, self.update_status)
+
+        # Start notification server
+        self.not_server = AuditNotifier.AuditNotifier(
+            notifier_config,
+            self.new_node_record
+        )
+
+    def new_node_record(self, in_data_dict):
+        print("New_Node_Record: Received new record entry: {}".format(
+            in_data_dict
+        ))
+        if (in_data_dict['server_port'] != 0) and (in_data_dict['server_port'] != self.port):
+            self.node_identities.append(in_data_dict)
 
     def update_status(self, status):
         self.status = status
 
-    def start(self):
-        node_ip = "localhost"
-        node_port = 9886
+    def append_user_record(self, user_id, action):
+        self.update_status(False)
 
-        self.server.connect_with_node(node_ip, node_port)
         payload = {
             'action': "ADD_TO_USER",
             'data': {
-                'user_id': "testid_1",
-                'action': "Add to user thing"
+                'user_id': user_id,
+                'action': action
             }
         }
         payload_json = json.dumps(payload, indent=2)
+        self.server.send_to_nodes(payload_json)
+
+        # Choose random node to communicate with
+        if len(self.node_identities) == 0:
+            print("Server Failure: No nodes to communicate with, error. ")
+            return False
+
+        node_choice = random.choice(self.node_identities)
+
+        print("Append User: Sending to Node: {}".format(node_choice))
+
+        self.server.connect_with_node(node_choice['ip'], node_choice['server_port'])
+        time.sleep(1)
         self.server.send_to_nodes(payload_json)
 
         timeout = 20
@@ -84,21 +113,67 @@ class AuditServer:
             idx = idx + 1
             time.sleep(1)
 
-        print("Server success")
+        if self.status:
+            print("Server Success: Record added to blockchain")
+            return True
+        else:
+            print("Server Failure: Record not added, error.")
+            return False
+
+    def start(self):
+        print("Server: Starting Server Nodes")
+        self.server.start()
+        self.not_server.start()
+
+    def stop_server(self):
+        print("Server: Stopping Server Nodes...")
         self.server.stop()
+        self.not_server.stop()
 
-        print("Server exiting")
+        time.sleep(.1)
 
-        return 0
+        self.server.join()
+        self.not_server.stop()
+        print("Server: Server Nodes stopped.")
 
 
 if __name__ == "__main__":
     locl_host = "127.0.0.1"
-    locl_port = 9875
+    locl_port = 9890
     name = "Server A"
-    aserver = AuditServer(locl_host, locl_port, name)
+
+    notifier_config = {
+        'name': "Audit Server",
+        'rate': 5,
+        'identity': {
+            'name': "Audit Server",
+            'ip': "127.0.0.1",
+            'node_port': 0,
+            'server_port': 9890
+        }
+    }
+
+    aserver = AuditServer(locl_host, locl_port, name, notifier_config)
 
     aserver.start()
+
+    time.sleep(10)
+
+    action_a = {
+        'user': "Colton",
+        'action': 'Read a thing',
+        'signature': b'F0F0F0F0'.hex()
+    }
+    user_a = 'testid_1'
+
+    aserver.append_user_record(
+        user_a,
+        json.dumps(action_a, indent=2)
+    )
+
+    aserver.stop_server()
+
+
 
 
 

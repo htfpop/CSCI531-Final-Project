@@ -10,15 +10,25 @@ from p2pnetwork.node import Node
 
 import AuditData
 import BlockChain
+import AuditNotifier
 
 RESPONSE_TIMEOUT = 20
 VOTE_THRESHOLD = .5
 
+
 class NodeServerComms(Node):
-    def __init__(self, host, port, audit_node_name, func_add_action):
-        super(NodeServerComms, self).__init__(host, port, audit_node_name, None, 0)
-        self.node_name = audit_node_name
+    def __init__(self, config, func_add_action):
+        super(NodeServerComms, self).__init__(
+            config['host'],
+            config['port'],
+            config['name'],
+            None,
+            0
+        )
+        self.node_name = config['name']
         self.func_add_action = func_add_action
+
+        self.server_identities = []
 
     def outbound_node_connected(self, connected_node):
         print("Node ({}):: outbound_node_connected: Connected to peer node: {}".format(
@@ -62,11 +72,19 @@ class NodeServerComms(Node):
             resp_json = json.dumps(resp_data, indent=2)
             self.send_to_node(node, resp_json)
 
+    def add_server_identity(self, identity):
+        self.server_identities.append(identity)
 
 class NodeComms(Node):
-    def __init__(self, host, port, audit_node_name, func_prove_update):
-        super(NodeComms, self).__init__(host, port, audit_node_name, None, 0)
-        self.node_name = audit_node_name
+    def __init__(self, config, func_prove_update):
+        super(NodeComms, self).__init__(
+            config['host'],
+            config['port'],
+            config['name'],
+            None,
+            0
+        )
+        self.node_name = config['name']
         self.func_prove_update = func_prove_update
 
         self.peer_status = {}
@@ -178,23 +196,59 @@ class NodeComms(Node):
 
 
 class AuditNode:
-    def __init__(self, host, port, audit_node_name):
+    def __init__(self, config):
         self.audit_data = None
         self.blockchain = None
         self.root = None
+        self.config = config
 
         # Setup Node for handling Audit network
-        self.node = NodeComms(host, port, audit_node_name, self.prove_update)
+        node_config = {
+            'name': config['name'],
+            'host': config['ip'],
+            'port': config['node_port']
+        }
+        self.node = NodeComms(node_config, self.prove_update)
 
         # Setup Node for handling server comms
-        self.server = NodeServerComms(host, port + 10, audit_node_name, self.update_block_chain)
+        server_config = {
+            'name': config['name'],
+            'host': config['ip'],
+            'port': config['server_port']
+        }
+        self.server = NodeServerComms(server_config, self.update_block_chain)
+
+        # Setup Server for Sharing
+        notifier_config = {
+            'name': config['name'],
+            'rate': 5,
+            'identity': {
+                'name': config['name'],
+                'ip': config['ip'],
+                'node_port': config['node_port'],
+                'server_port': config['server_port']
+            }
+        }
+        self.notifier = AuditNotifier.AuditNotifier(
+            notifier_config,
+            self.new_node_record
+        )
 
     def start_node(self):
         self.node.start()
         self.server.start()
+        self.notifier.start()
 
     def stop_node(self):
         self.node.stop()
+        self.server.stop()
+        self.notifier.stop()
+
+        time.sleep(.1)
+
+        self.node.join()
+        self.server.join()
+        self.notifier.stop()
 
     def update_block_chain(self, user_id, new_record):
         if not self.audit_data.add_to_user(user_id, new_record):
@@ -241,6 +295,15 @@ class AuditNode:
         print("Prove_Update:: Not implemented, returning True")
         return True
 
+    def new_node_record(self, in_data_dict):
+        print("New_Node_Record: Received new record entry: {}".format(
+            in_data_dict
+        ))
+        if (in_data_dict['node_port'] != 0) and (in_data_dict['node_port'] != self.config['node_port']):
+            self.node.connect_with_node(in_data_dict['ip'], in_data_dict['node_port'])
+        if in_data_dict['server_port'] != 0 and (in_data_dict['node_port'] != self.config['server_port']):
+            self.server.add_server_identity(in_data_dict)
+
     def build_node_trees(self, user_ids):
         self.audit_data = AuditData.AuditData()
         self.audit_data.initialize_audit_data(user_ids)
@@ -256,10 +319,14 @@ class AuditNode:
 if __name__ == "__main__":
     a = ['testid_1', 'testid_2', 'testid_3', 'testid_4']
 
-    node_ip = "127.0.0.1"
-    node_port = 9876
+    node_config = {
+        'name': "Node A",
+        'ip': "127.0.0.1",
+        'node_port': 9876,
+        'server_port': 9875
+    }
 
-    a_node = AuditNode(node_ip, node_port, 'NodeA')
+    a_node = AuditNode(node_config)
 
     a_node.build_node_trees(a)
 
@@ -268,14 +335,14 @@ if __name__ == "__main__":
 
     a_node.start_node()
 
-    time.sleep(20)
+    time.sleep(30)
 
     action_a = {
         'user': "Colton",
         'action': 'Read a thing',
         'signature': b'F0F0F0F0'.hex()
     }
-    a_node.update_block_chain('testid_1', json.dumps(action_a, indent=2))
+    #a_node.update_block_chain('testid_1', json.dumps(action_a, indent=2))
 
     print(a_node.blockchain)
 
