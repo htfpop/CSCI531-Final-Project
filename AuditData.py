@@ -71,6 +71,58 @@ class AuditData:
         else:
             return None
 
+    def prove_update(self, entry_data):
+        entry = {
+            'user': entry_data['user'],
+            'action': bytes.fromhex(entry_data['action']),
+            'proof': entry_data['proof'],
+            'root': bytes.fromhex(entry_data['root'])
+        }
+
+        # Check Proof
+        found_flag = False
+        for user_key in self.user_tree_dict.keys():
+            if user_key == entry['user']:
+                found_flag = True
+                break
+
+        if not found_flag:
+            print("AuditData:: Prove Update: No User found. NEED TO IMPLEMENT")
+            return False
+
+        user_tree = self.user_tree_dict[entry['user']]
+
+        proof_de = pymerkle.MerkleProof.deserialize(entry['proof'])
+        try:
+            pymerkle.verify_consistency(
+                user_tree.root,
+                entry['root'],
+                proof_de
+            )
+        except pymerkle.proof.InvalidProof:
+            print("AuditData:: Prove Update: Failed on consistency verification, error.")
+            return False
+
+        save_state = self.export()
+
+        # Add new action to tree
+        new_hash = user_tree.append_entry(entry['action'])
+        new_entry = {
+            'action': entry_data['action'],
+            'hash': new_hash
+        }
+
+        self.user_entry_dict[entry['user']].append(new_entry)
+
+        if user_tree.root != entry['root']:
+            print("AuditData:: Prove Update: New User root does not equal supplied root, error")
+            self.import_dict(save_state)
+            return False
+
+        self.build_audit_tree()
+
+        return True
+
     def create_user_action(self, user_id, action):
         new_action = {
             'user_id': user_id,
@@ -104,6 +156,7 @@ class AuditData:
     def add_to_user(self, user_id, action):
         found_flag = False
         user_key = None
+        new_entry_data = None
 
         for user_key in self.user_tree_dict.keys():
             if user_key == user_id:
@@ -113,18 +166,33 @@ class AuditData:
         if found_flag:
             user_tree = self.user_tree_dict[user_key]
             new_action = self.create_user_action(user_id, action)
+
+            # Get Tree Status Before add
+            old_root = user_tree.root
+            old_size = user_tree.length
+
+            # Add to tree
             entry_hash = user_tree.append_entry(new_action)
             new_entry = {
                 'action': new_action.hex(),
                 'hash': entry_hash.hex()
             }
 
+            # Generate Proof
+            proof = user_tree.prove_consistency(old_size, old_root)
+            proof_root = user_tree.root
+            new_entry_data = {
+                'user': user_key,
+                'action': new_action.hex(),
+                'proof': proof.serialize(),
+                'root': proof_root.hex()
+            }
+
             self.user_entry_dict[user_key].append(new_entry)
 
             self.build_audit_tree()
 
-
-        return found_flag
+        return new_entry_data
 
     def build_audit_tree(self):
         audit_tree = pymerkle.MerkleTree(
@@ -221,14 +289,14 @@ class AuditData:
 
 
 if __name__ == "__main__":
-    in_a = ['testid_1', 'testid_2', 'testid_3', 'testid_4']
-
+    #in_a = ['testid_1', 'testid_2', 'testid_3', 'testid_4']
+    in_a = ['testid_1']
     audit_data = AuditData()
     audit_data.initialize_audit_data(in_a)
 
     print(audit_data)
 
-    audit_data.add_to_user('testid_2', 'READ')
+    audit_data.add_to_user('testid_1', 'READ')
 
     print(audit_data)
 
@@ -236,6 +304,23 @@ if __name__ == "__main__":
 
     audit_data_p = AuditData()
     audit_data_p.import_dict(out_dict)
+
+    audit_data_save = audit_data.user_trees[0].root
+    audit_data_save_len = audit_data.user_trees[0].length
+
+    entry_b = audit_data.add_to_user('testid_1', 'READ')
+
+    proof = audit_data.user_trees[0].prove_consistency(audit_data_save_len, audit_data_save)
+    proof_root = audit_data.user_trees[0].root
+
+    pymerkle.verify_consistency(audit_data_save, proof_root, proof)
+
+    audit_data_p.prove_update(entry_b)
+
+    print(proof.serialize())
+
+
+    print(audit_data_save)
 
     print(audit_data_p)
 

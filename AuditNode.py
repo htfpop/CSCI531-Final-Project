@@ -5,6 +5,7 @@ import datetime
 import hashlib
 import json
 import time
+import sys
 from p2pnetwork.node import Node
 
 
@@ -176,6 +177,16 @@ class NodeComms(Node):
 
         return unique_nodes
 
+    def check_new_connection(self, host, port):
+        for node in self.get_peers():
+            if node.host == host and node.port == str(port):
+                print("Audit Node:: Check New Connection: Record already connected")
+                return
+
+        # Else, connect
+        print("Audit Node:: Check New Connection: Adding connection")
+        self.connect_with_node(host, port)
+
     def add_peer(self, node):
         if node.id not in self.peer_status.keys():
             self.peer_status[node.id] = {
@@ -251,7 +262,8 @@ class AuditNode:
         self.notifier.stop()
 
     def update_block_chain(self, user_id, new_record):
-        if not self.audit_data.add_to_user(user_id, new_record):
+        new_entry = self.audit_data.add_to_user(user_id, new_record)
+        if new_entry is None:
             print("Node:: update_block_chain: Failed to add to user record, no user found.")
             return False
 
@@ -265,7 +277,10 @@ class AuditNode:
         # Format Data for transit
         out_dict = {
             'action': 'ADD_REQUEST',
-            'data': self.blockchain.print_block(p_block)
+            'data': {
+                'block': self.blockchain.dict_block(p_block),
+                'entry': new_entry
+            }
         }
         out_json = json.dumps(out_dict, indent=2)
 
@@ -323,8 +338,27 @@ class AuditNode:
             print("Import Node:: No Data read in, exiting")
             return False
 
-    def prove_update(self, new_block):
-        print("Prove_Update:: Not implemented, returning True")
+    def prove_update(self, new_entry_data):
+        print("Prove_Update:: Starting")
+        new_block = new_entry_data['block']
+        new_entry = new_entry_data['entry']
+
+        # Test against Blockchain
+        if not self.blockchain.prove_new_block(new_block):
+            print("Audit Node:: Prove Update: New entry failed block check, rejecting")
+            return False
+        print("Audit Node:: Prove Update: New block validated against blockchain")
+
+        # Test against Audit Data, add if valid
+        if not self.audit_data.prove_update(new_entry):
+            print("Audit Node:: Prove Update: New entry failed Audit Data check, rejecting")
+            return False
+        print("Audit Node:: Prove Update: New Action validated against Audit Data.")
+
+        # Update Blockchain
+        self.blockchain.add_block(self.blockchain.dedict_block(new_block))
+
+        print("Audit Node:: Prove Update: Success!")
         return True
 
     def new_node_record(self, in_data_dict):
@@ -332,7 +366,7 @@ class AuditNode:
             in_data_dict
         ))
         if (in_data_dict['node_port'] != 0) and (in_data_dict['node_port'] != self.config['node_port']):
-            self.node.connect_with_node(in_data_dict['ip'], in_data_dict['node_port'])
+            self.node.check_new_connection(in_data_dict['ip'], in_data_dict['node_port'])
         if in_data_dict['server_port'] != 0 and (in_data_dict['node_port'] != self.config['server_port']):
             self.server.add_server_identity(in_data_dict)
 
@@ -351,42 +385,57 @@ class AuditNode:
 if __name__ == "__main__":
     a = ['testid_1', 'testid_2', 'testid_3', 'testid_4']
 
-    node_config = {
+    node_config_a = {
         'name': "Node A",
         'ip': "127.0.0.1",
         'node_port': 9876,
         'server_port': 9875
     }
 
-    a_node = AuditNode(node_config)
+    node_config_b = {
+        'name': "Node B",
+        'ip': "127.0.0.1",
+        'node_port': 9871,
+        'server_port': 9870
+    }
 
-    a_node.build_node_trees(a)
+    if len(sys.argv) == 2:
+        if int(sys.argv[1]) == 0:
+            config = node_config_a
+        elif int(sys.argv[1]) == 1:
+            config = node_config_b
+        else:
+            print("Unrecognized input, exiting")
+            sys.exit(1)
+    else:
+        config = node_config_a
+
+    a_node = AuditNode(config)
+
+    a_node.import_node("./node_a_export.txt")
 
     print(a_node.blockchain)
     print(a_node.audit_data)
 
-    a_node.export_node("./node_a_export.txt")
+    a_node.start_node()
 
-    b_node = AuditNode(node_config)
-    b_node.import_node("./node_a_export.txt")
+    command = input("? ")
+    while command != "stop":
+        if command == "update":
+            action_a = {
+                'user': "Colton",
+                'action': 'Read a thing',
+                'signature': b'F0F0F0F0'.hex()
+            }
+            a_node.update_block_chain('testid_1', json.dumps(action_a, indent=2))
+        if command == "print":
+            print(a_node.blockchain)
+            print(a_node.audit_data)
+        command = input("? ")
 
-    print(b_node.blockchain)
-    print(b_node.audit_data)
+    print("Node exiting")
 
-    #a_node.start_node()
-
-    #time.sleep(30)
-
-    action_a = {
-        'user': "Colton",
-        'action': 'Read a thing',
-        'signature': b'F0F0F0F0'.hex()
-    }
-    #a_node.update_block_chain('testid_1', json.dumps(action_a, indent=2))
-
-    #print(a_node.blockchain)
-
-    #a_node.stop_node()
+    a_node.stop_node()
 
 
 

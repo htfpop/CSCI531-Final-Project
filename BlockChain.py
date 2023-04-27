@@ -98,6 +98,15 @@ class Blockchain:
 
         return True
 
+    def prove_new_block(self, new_block_data):
+        print(new_block_data)
+        new_block = self.dedict_block(new_block_data)
+
+        if self.validate_new_block(new_block):
+            return True
+        else:
+            return False
+
     def validate_new_block(self, new_block):
         curr_head = self.chain[-1]
 
@@ -153,5 +162,3 @@ if __name__ == "__main__":
     in_status = blockchain_p.import_dict(out_dict)
 
     print(blockchain_p)
-
-

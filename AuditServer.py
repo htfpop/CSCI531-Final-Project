@@ -91,7 +91,6 @@ class AuditServer:
             }
         }
         payload_json = json.dumps(payload, indent=2)
-        self.server.send_to_nodes(payload_json)
 
         # Choose random node to communicate with
         if len(self.node_identities) == 0:
