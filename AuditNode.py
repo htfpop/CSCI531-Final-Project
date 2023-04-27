@@ -291,6 +291,38 @@ class AuditNode:
 
         return True
 
+    def export_node(self, filepath):
+        blockchain_dict = self.blockchain.export()
+        audit_data_dict = self.audit_data.export()
+
+        node_export_dict = {
+            'blockchain': blockchain_dict,
+            'audit_data': audit_data_dict
+        }
+
+        export_str = json.dumps(node_export_dict, indent=2)
+
+        with open(filepath, "w") as out_file:
+            out_file.write(export_str)
+
+    def import_node(self, filepath):
+        in_data = None
+        with open(filepath, "r") as in_file:
+            in_data = in_file.read()
+
+        if in_data:
+            in_dict = json.loads(in_data)
+            self.audit_data = AuditData.AuditData()
+            self.audit_data.import_dict(in_dict['audit_data'])
+
+            self.blockchain = BlockChain.Blockchain()
+            self.blockchain.import_dict(in_dict['blockchain'])
+
+            return True
+        else:
+            print("Import Node:: No Data read in, exiting")
+            return False
+
     def prove_update(self, new_block):
         print("Prove_Update:: Not implemented, returning True")
         return True
@@ -333,9 +365,17 @@ if __name__ == "__main__":
     print(a_node.blockchain)
     print(a_node.audit_data)
 
-    a_node.start_node()
+    a_node.export_node("./node_a_export.txt")
 
-    time.sleep(30)
+    b_node = AuditNode(node_config)
+    b_node.import_node("./node_a_export.txt")
+
+    print(b_node.blockchain)
+    print(b_node.audit_data)
+
+    #a_node.start_node()
+
+    #time.sleep(30)
 
     action_a = {
         'user': "Colton",
@@ -344,9 +384,9 @@ if __name__ == "__main__":
     }
     #a_node.update_block_chain('testid_1', json.dumps(action_a, indent=2))
 
-    print(a_node.blockchain)
+    #print(a_node.blockchain)
 
-    a_node.stop_node()
+    #a_node.stop_node()
 
 
 
