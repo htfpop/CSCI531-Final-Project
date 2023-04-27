@@ -33,6 +33,8 @@ Parameters  : email - email string
               password - password string
 Outputs     : None
 """
+
+
 def client_handler(email, password):
     # create a TCP/IP socket
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -59,6 +61,8 @@ Description : Perform simple handshake to ensure stability of connection to serv
 Parameters  : client_socket - socket object used for transmission and reception
 Outputs     : None
 """
+
+
 def client_pre_connect(client_socket):
     # connect the socket to the server's IP address and port
     server_address = ('localhost', 8888)
@@ -86,6 +90,8 @@ Description : Receive prime (p), generator (g), and server's public key (pk_serv
 Parameters  : client_socket - socket object used for transmission and reception
 Outputs     : None
 """
+
+
 def client_post_connect(client_socket: socket):
     print(f'[DEBUG]: --- Generating Shared Secret ---')
 
@@ -130,7 +136,7 @@ def client_post_connect(client_socket: socket):
                info=b'128key')
     derived_key = kdf.derive(shared)
 
-    #DO NOT USE IN PRODUCTION!!!
+    # DO NOT USE IN PRODUCTION!!!
     print(f'[DEBUG]: HKDF DERIVED AES128 RED KEY')
     print(' '.join('{:02x}'.format(x) for x in derived_key))
 
@@ -265,7 +271,6 @@ def transmit_msg(client: Client, serv: socket):
 
     serv.sendall(ct)
 
-
     # TEST PADDER AND DEPADDER
     print(f'[Client]: Cipher text - {ct}')
 
@@ -288,6 +293,8 @@ Description : Main entry point -- currently not used due to testing
 Parameters  : None
 Outputs     : None
 """
+
+
 def main():
     print("---Client---")
     email = input("[Client]: Enter Email: ")

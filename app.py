@@ -9,6 +9,8 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.sql import func
 import bcrypt
 
+from AuditServer import AuditServer
+
 # GLOBAL CONFIG
 TIMEOUT = timedelta(seconds=300)
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -18,6 +20,30 @@ app.config['PERMANENT_SESSION_LIFETIME'] = TIMEOUT
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(BASE_DIR, 'patient.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
+
+#test
+locl_host = "127.0.0.1"
+locl_port = 9890
+name = "Server A"
+notifier_config = {
+    'name': "Audit Server",
+    'rate': 5,
+    'identity': {
+        'name': "Audit Server",
+        'ip': "127.0.0.1",
+        'node_port': 0,
+        'server_port': 9890
+    }
+}
+aserver = AuditServer(locl_host, locl_port, name, notifier_config)
+
+# Actions
+ACT_CREATE = 0xC0FFEE01
+ACT_DELETE = 0xC0FFEE02
+ACT_CHANGE = 0xF00D4DAD
+ACT_QUERY = 0xFACE0FFF
+ACT_PRINT = 0xBEEF4DAD
+ACT_COPY = 0xCAFECAFE
 
 
 class Patients(db.Model):
@@ -77,13 +103,21 @@ class Patients(db.Model):
             return True
 
     @staticmethod
-    def get_id(self): return self.id
+    def get_id(self):
+        return self.id
+
     @staticmethod
-    def get_firstname(self): return self.firstname
+    def get_firstname(self):
+        return self.firstname
+
     @staticmethod
-    def get_lastname(self): return self.lastname
+    def get_lastname(self):
+        return self.lastname
+
     @staticmethod
-    def get_email(self): return self.email
+    def get_email(self):
+        return self.email
+
     @staticmethod
     def set_password(self, password: str):
         """
@@ -116,6 +150,7 @@ def token_required(function):
     :param function: Function requiring token_required wrapping
     :return: JSON error code or valid JWT token
     """
+
     @wraps(function)
     def decorated(*args, **kwargs):
         token = request.args.get('token')
@@ -131,10 +166,123 @@ def token_required(function):
 
     return decorated
 
+def token_handle():
+    token = request.args.get('token')
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    expiration_time = datetime.strptime(payload['expiration'], '%Y-%m-%d %H:%M:%S.%f')
+
+    # Check if the session has timed out
+    if datetime.utcnow() >= expiration_time:
+        return jsonify({'Message': 'Session has timed out'})
+
+    # Update the expiration time to extend the session
+    new_expiration_time = datetime.utcnow() + TIMEOUT
+    payload['expiration'] = str(new_expiration_time)
+    new_token = jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
+
+    return new_token
+
 
 @app.route('/public')
 def public():
     return 'For Public'
+
+
+@app.route('/create-ehr-data')
+@token_required
+def create_ehr():
+    token = token_handle()
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    email = payload['email']
+
+    user: Patients = Patients.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({'ERROR': f'User with {email} not in database'})
+
+    id = user.get_id(user)
+
+    return render_template('00_Create_EHR.html')
+
+@app.route('/delete-ehr-data')
+@token_required
+def delete_ehr():
+    token = token_handle()
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    email = payload['email']
+
+    user: Patients = Patients.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({'ERROR': f'User with {email} not in database'})
+
+    id = user.get_id(user)
+
+    return render_template('01_Delete_EHR.html')
+
+@app.route('/change-ehr-data')
+@token_required
+def change_ehr():
+    token = token_handle()
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    email = payload['email']
+
+    user: Patients = Patients.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({'ERROR': f'User with {email} not in database'})
+
+    id = user.get_id(user)
+
+    return render_template('02_Change_EHR.html')
+@app.route('/query-ehr-data')
+@token_required
+def query_ehr():
+    token = token_handle()
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    email = payload['email']
+
+    user: Patients = Patients.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({'ERROR': f'User with {email} not in database'})
+
+    id = user.get_id(user)
+
+    return render_template('03_Query_EHR.html')
+
+@app.route('/print-ehr-data')
+@token_required
+def print_ehr():
+    token = token_handle()
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    email = payload['email']
+
+    user: Patients = Patients.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({'ERROR': f'User with {email} not in database'})
+
+    id = user.get_id(user)
+
+    return render_template('04_Print_EHR.html')
+
+@app.route('/copy-ehr-data')
+@token_required
+def copy_ehr():
+    token = token_handle()
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    email = payload['email']
+
+    user: Patients = Patients.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({'ERROR': f'User with {email} not in database'})
+
+    id = user.get_id(user)
+
+    return render_template('05_Copy_EHR.html')
+
 
 
 @app.route('/auth')
@@ -158,12 +306,22 @@ def auth():
     payload['expiration'] = str(new_expiration_time)
     new_token = jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
 
+    user: Patients = Patients.query.filter_by(email=email).first()
+    if not user:
+        return jsonify({'ERROR': f'User with {email} not in database'})
+
+    id = user.get_id(user)
+    session['jwt_token'] = new_token
+    session['uid'] = id
+
     return render_template('user_dash.html')
 
     # return jsonify({
     #     'Message1': f'JWT Verified, welcome to dashboard {email}!',
     #     'Message2': f'Your session ends at: {expiration_time}',
     #     'Message3': f'Current time: {datetime.utcnow()}',
+    #     'Message4': f'UID: {id}',
+    #     'Message5': f'Action: {hex(ACT_QUERY)}',
     #     'NewToken': new_token
     # })
 
@@ -216,6 +374,7 @@ def post_signup():
             return render_template('signup_success.html')
         else:
             return render_template('signup_failure.html')
+
 
 @app.route('/login', methods=['POST'])
 def post_login():
