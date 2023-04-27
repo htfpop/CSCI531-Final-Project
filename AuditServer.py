@@ -91,7 +91,6 @@ class AuditServer:
             }
         }
         payload_json = json.dumps(payload, indent=2)
-        self.server.send_to_nodes(payload_json)
 
         # Choose random node to communicate with
         if len(self.node_identities) == 0:
@@ -157,7 +156,7 @@ if __name__ == "__main__":
 
     aserver.start()
 
-    time.sleep(10)
+    time.sleep(15)
 
     action_a = {
         'user': "Colton",
