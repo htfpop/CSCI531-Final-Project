@@ -15,10 +15,11 @@ VOTE_THRESHOLD = .5
 
 
 class NodeServerComms(Node):
-    def __init__(self, host, port, audit_node_name, return_status_func):
+    def __init__(self, host, port, audit_node_name, return_status_func, report_query_status_func):
         super(NodeServerComms, self).__init__(host, port, audit_node_name, None, 0)
         self.node_name = audit_node_name
         self.report_status_func = return_status_func
+        self.report_query_status_func = report_query_status_func
 
     def outbound_node_connected(self, connected_node):
         print("Node ({}):: outbound_node_connected: Connected to peer node: {}".format(
@@ -51,18 +52,27 @@ class NodeServerComms(Node):
         in_dict = data
 
         if in_dict['action'] == 'RESPONSE':
-            status = self.report_status_func(in_dict['status'])
+            self.report_status_func(in_dict['status'])
+        elif in_dict['action'] == 'USER_QUERY':
+            self.report_query_status_func(
+                in_dict['status'],
+                in_dict['data']
+            )
+
+
 
 
 class AuditServer:
     def __init__(self, host, port, server_id, notifier_config):
 
         self.status = False
+        self.q_status = False
+        self.q_payload = None
         self.node_identities = []
         self.port = port
 
         # Start Node communications
-        self.server = NodeServerComms(host, port, server_id, self.update_status)
+        self.server = NodeServerComms(host, port, server_id, self.update_status, self.query_status)
 
         # Start notification server
         self.not_server = AuditNotifier.AuditNotifier(
@@ -79,6 +89,77 @@ class AuditServer:
 
     def update_status(self, status):
         self.status = status
+
+    def query_status(self, status, payload):
+        self.q_status = status
+        self.q_payload = payload
+
+    def query_users(self, action):
+        self.query_status(False, None)
+
+        payload = {
+            'action': 'QUERY_USERS',
+            'data': {
+                'action': action
+            }
+        }
+
+        payload_json = json.dumps(payload, indent=2)
+
+        if self.perform_query(payload_json):
+            print("Audit Server:: Query Users: Successfully retrieved all user data")
+        else:
+            print("Audit Server:: Query Users: Failed to retrieve all user data")
+
+        return self.q_payload
+
+    def query_user(self, user_id, action):
+        self.query_status(False, None)
+
+        payload = {
+            'action': "QUERY_USER",
+            'data': {
+                'user_id': user_id,
+                'action': action
+            }
+        }
+
+        payload_json = json.dumps(payload, indent=2)
+
+        if self.perform_query(payload_json):
+            print("Audit Server:: Query User: Successfully retrieved user ({})data".format(user_id))
+        else:
+            print("Audit Server:: Query User: Failed to retrieve user ({}) data".format(user_id))
+
+        return self.q_payload
+
+    def perform_query(self, payload):
+        # Choose random node to communicate with
+        if len(self.node_identities) == 0:
+            print("Server Failure: No nodes to communicate with, error. ")
+            return False
+
+        node_choice = random.choice(self.node_identities)
+
+        print("Audit Server:: Perform Query: Querying from node: {}".format(node_choice))
+
+        self.server.connect_with_node(node_choice['ip'], node_choice['server_port'])
+        time.sleep(1)
+        self.server.send_to_nodes(payload)
+
+        timeout = 20
+        idx = 0
+        while (self.q_status is False) and (idx < timeout):
+            print("Audit Server:: Perform Query: Waiting on return status")
+            idx = idx + 1
+            time.sleep(1)
+
+        if self.q_status:
+            print("Audit Server:: Perform Query: Retrieved User Record")
+            return True
+        else:
+            print("Audit Server:: Perform Query: Failed to retrieve User Record")
+            return False
 
     def append_user_record(self, user_id, action):
         self.update_status(False)
@@ -136,10 +217,11 @@ class AuditServer:
         print("Server: Server Nodes stopped.")
 
 
+
 if __name__ == "__main__":
     locl_host = "127.0.0.1"
     locl_port = 9890
-    name = "Server A"
+    name = "Audit Server"
 
     notifier_config = {
         'name': "Audit Server",
@@ -156,19 +238,42 @@ if __name__ == "__main__":
 
     aserver.start()
 
-    time.sleep(10)
+    command = input("? ")
+    while command != "stop":
+        if command == "update":
+            action_a = {
+                'user': "Colton",
+                'action': 'Read a thing',
+                'signature': b'F0F0F0F0'.hex()
+            }
+            user_a = 'testid_1'
 
-    action_a = {
-        'user': "Colton",
-        'action': 'Read a thing',
-        'signature': b'F0F0F0F0'.hex()
-    }
-    user_a = 'testid_1'
+            aserver.append_user_record(
+                user_a,
+                json.dumps(action_a, indent=2)
+            )
+        if command == "query":
+            action_a = {
+                'user': "Colton",
+                'action': 'Query User',
+                'signature': b'F0F0F0F0'.hex()
+            }
+            user_a = 'testid_1'
 
-    aserver.append_user_record(
-        user_a,
-        json.dumps(action_a, indent=2)
-    )
+            ret_payload = aserver.query_user(user_a, action_a)
+
+            print(ret_payload)
+        if command == "query_all":
+            action_a = {
+                'user': "Colton",
+                'action': 'Query All Users',
+                'signature': b'F0F0F0F0'.hex()
+            }
+
+            ret_payload = aserver.query_users(action_a)
+
+            print(ret_payload)
+        command = input("? ")
 
     aserver.stop_server()
 

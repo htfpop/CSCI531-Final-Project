@@ -205,6 +205,43 @@ class AuditData:
 
         self.audit_tree = audit_tree
 
+    def query_user(self, user_id):
+        if user_id:
+            # Get Specific user record
+            found_flag = False
+            user_key = None
+            entry_idx = 0
+            entry = None
+
+            for user_key in self.user_entry_dict.keys():
+                if user_key == user_id:
+                    found_flag = True
+                    break
+
+            if found_flag:
+                user_dict = {}
+
+                for entry_idx, entry in enumerate(self.user_entry_dict[user_key]):
+                    action = entry['action']
+                    action_decode = bytes.fromhex(action).decode()
+                    user_dict[entry_idx] = action_decode
+
+                return user_dict
+            else:
+                return None
+        else:
+            all_users_dict = {}
+            for user_key in self.user_entry_dict.keys():
+                user_dict = {}
+                for entry_idx, entry in enumerate(self.user_entry_dict[user_key]):
+                    action = entry['action']
+                    action_decode = bytes.fromhex(action).decode()
+                    user_dict[entry_idx] = action_decode
+
+                all_users_dict[user_key] = user_dict
+
+            return all_users_dict
+
     def export(self):
         audit_tree_root = self.audit_tree.root.hex()
         user_data_dict = {}

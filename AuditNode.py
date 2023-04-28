@@ -18,7 +18,7 @@ VOTE_THRESHOLD = .5
 
 
 class NodeServerComms(Node):
-    def __init__(self, config, func_add_action):
+    def __init__(self, config, func_add_action, func_query_user):
         super(NodeServerComms, self).__init__(
             config['host'],
             config['port'],
@@ -28,6 +28,7 @@ class NodeServerComms(Node):
         )
         self.node_name = config['name']
         self.func_add_action = func_add_action
+        self.func_query_user = func_query_user
 
         self.server_identities = []
 
@@ -69,6 +70,31 @@ class NodeServerComms(Node):
             resp_data = {
                 'action': "RESPONSE",
                 'status': status
+            }
+            resp_json = json.dumps(resp_data, indent=2)
+            self.send_to_node(node, resp_json)
+        elif in_dict['action'] == 'QUERY_USER':
+            user_id = in_dict['data']['user_id']
+            user_action = in_dict['data']['action']
+
+            status, data = self.func_query_user(user_id, user_action)
+
+            resp_data = {
+                'action': 'USER_QUERY',
+                'status': status,
+                'data': data
+            }
+            resp_json = json.dumps(resp_data, indent=2)
+            self.send_to_node(node, resp_json)
+        elif in_dict['action'] == 'QUERY_USERS':
+            user_action = in_dict['data']['action']
+
+            status, data = self.func_query_user(None, user_action)
+
+            resp_data = {
+                'action': 'USER_QUERY',
+                'status': status,
+                'data': data
             }
             resp_json = json.dumps(resp_data, indent=2)
             self.send_to_node(node, resp_json)
@@ -227,7 +253,11 @@ class AuditNode:
             'host': config['ip'],
             'port': config['server_port']
         }
-        self.server = NodeServerComms(server_config, self.update_block_chain)
+        self.server = NodeServerComms(
+            server_config,
+            self.update_block_chain,
+            self.query_user
+        )
 
         # Setup Server for Sharing
         notifier_config = {
@@ -260,6 +290,27 @@ class AuditNode:
         self.node.join()
         self.server.join()
         self.notifier.stop()
+
+    def query_user(self, user_id, new_record):
+        if user_id:
+            # Search for user and report results
+            print("Node:: Query User: Received request to query user ({})".format(user_id))
+
+        else:
+            # Return all user data
+            print("Node:: Query User: Received request to query all users")
+
+        record = self.audit_data.query_user(user_id)
+
+        query = {
+            'time': datetime.datetime.now().isoformat(),
+            'record': record
+        }
+
+        query_json = json.dumps(query)
+
+        return True, query_json
+
 
     def update_block_chain(self, user_id, new_record):
         new_entry = self.audit_data.add_to_user(user_id, new_record)
