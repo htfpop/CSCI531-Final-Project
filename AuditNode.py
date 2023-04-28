@@ -5,6 +5,7 @@ import datetime
 import hashlib
 import json
 import time
+import sys
 from p2pnetwork.node import Node
 
 
@@ -17,7 +18,7 @@ VOTE_THRESHOLD = .5
 
 
 class NodeServerComms(Node):
-    def __init__(self, config, func_add_action):
+    def __init__(self, config, func_add_action, func_query_user):
         super(NodeServerComms, self).__init__(
             config['host'],
             config['port'],
@@ -27,6 +28,7 @@ class NodeServerComms(Node):
         )
         self.node_name = config['name']
         self.func_add_action = func_add_action
+        self.func_query_user = func_query_user
 
         self.server_identities = []
 
@@ -68,6 +70,31 @@ class NodeServerComms(Node):
             resp_data = {
                 'action': "RESPONSE",
                 'status': status
+            }
+            resp_json = json.dumps(resp_data, indent=2)
+            self.send_to_node(node, resp_json)
+        elif in_dict['action'] == 'QUERY_USER':
+            user_id = in_dict['data']['user_id']
+            user_action = in_dict['data']['action']
+
+            status, data = self.func_query_user(user_id, user_action)
+
+            resp_data = {
+                'action': 'USER_QUERY',
+                'status': status,
+                'data': data
+            }
+            resp_json = json.dumps(resp_data, indent=2)
+            self.send_to_node(node, resp_json)
+        elif in_dict['action'] == 'QUERY_USERS':
+            user_action = in_dict['data']['action']
+
+            status, data = self.func_query_user(None, user_action)
+
+            resp_data = {
+                'action': 'USER_QUERY',
+                'status': status,
+                'data': data
             }
             resp_json = json.dumps(resp_data, indent=2)
             self.send_to_node(node, resp_json)
@@ -176,6 +203,16 @@ class NodeComms(Node):
 
         return unique_nodes
 
+    def check_new_connection(self, host, port):
+        for node in self.get_peers():
+            if node.host == host and node.port == str(port):
+                print("Audit Node:: Check New Connection: Record already connected")
+                return
+
+        # Else, connect
+        print("Audit Node:: Check New Connection: Adding connection")
+        self.connect_with_node(host, port)
+
     def add_peer(self, node):
         if node.id not in self.peer_status.keys():
             self.peer_status[node.id] = {
@@ -216,7 +253,11 @@ class AuditNode:
             'host': config['ip'],
             'port': config['server_port']
         }
-        self.server = NodeServerComms(server_config, self.update_block_chain)
+        self.server = NodeServerComms(
+            server_config,
+            self.update_block_chain,
+            self.query_user
+        )
 
         # Setup Server for Sharing
         notifier_config = {
@@ -250,8 +291,30 @@ class AuditNode:
         self.server.join()
         self.notifier.stop()
 
+    def query_user(self, user_id, new_record):
+        if user_id:
+            # Search for user and report results
+            print("Node:: Query User: Received request to query user ({})".format(user_id))
+
+        else:
+            # Return all user data
+            print("Node:: Query User: Received request to query all users")
+
+        record = self.audit_data.query_user(user_id)
+
+        query = {
+            'time': datetime.datetime.now().isoformat(),
+            'record': record
+        }
+
+        query_json = json.dumps(query)
+
+        return True, query_json
+
+
     def update_block_chain(self, user_id, new_record):
-        if not self.audit_data.add_to_user(user_id, new_record):
+        new_entry = self.audit_data.add_to_user(user_id, new_record)
+        if new_entry is None:
             print("Node:: update_block_chain: Failed to add to user record, no user found.")
             return False
 
@@ -265,7 +328,10 @@ class AuditNode:
         # Format Data for transit
         out_dict = {
             'action': 'ADD_REQUEST',
-            'data': self.blockchain.print_block(p_block)
+            'data': {
+                'block': self.blockchain.dict_block(p_block),
+                'entry': new_entry
+            }
         }
         out_json = json.dumps(out_dict, indent=2)
 
@@ -291,8 +357,59 @@ class AuditNode:
 
         return True
 
-    def prove_update(self, new_block):
-        print("Prove_Update:: Not implemented, returning True")
+    def export_node(self, filepath):
+        blockchain_dict = self.blockchain.export()
+        audit_data_dict = self.audit_data.export()
+
+        node_export_dict = {
+            'blockchain': blockchain_dict,
+            'audit_data': audit_data_dict
+        }
+
+        export_str = json.dumps(node_export_dict, indent=2)
+
+        with open(filepath, "w") as out_file:
+            out_file.write(export_str)
+
+    def import_node(self, filepath):
+        in_data = None
+        with open(filepath, "r") as in_file:
+            in_data = in_file.read()
+
+        if in_data:
+            in_dict = json.loads(in_data)
+            self.audit_data = AuditData.AuditData()
+            self.audit_data.import_dict(in_dict['audit_data'])
+
+            self.blockchain = BlockChain.Blockchain()
+            self.blockchain.import_dict(in_dict['blockchain'])
+
+            return True
+        else:
+            print("Import Node:: No Data read in, exiting")
+            return False
+
+    def prove_update(self, new_entry_data):
+        print("Prove_Update:: Starting")
+        new_block = new_entry_data['block']
+        new_entry = new_entry_data['entry']
+
+        # Test against Blockchain
+        if not self.blockchain.prove_new_block(new_block):
+            print("Audit Node:: Prove Update: New entry failed block check, rejecting")
+            return False
+        print("Audit Node:: Prove Update: New block validated against blockchain")
+
+        # Test against Audit Data, add if valid
+        if not self.audit_data.prove_update(new_entry):
+            print("Audit Node:: Prove Update: New entry failed Audit Data check, rejecting")
+            return False
+        print("Audit Node:: Prove Update: New Action validated against Audit Data.")
+
+        # Update Blockchain
+        self.blockchain.add_block(self.blockchain.dedict_block(new_block))
+
+        print("Audit Node:: Prove Update: Success!")
         return True
 
     def new_node_record(self, in_data_dict):
@@ -300,7 +417,7 @@ class AuditNode:
             in_data_dict
         ))
         if (in_data_dict['node_port'] != 0) and (in_data_dict['node_port'] != self.config['node_port']):
-            self.node.connect_with_node(in_data_dict['ip'], in_data_dict['node_port'])
+            self.node.check_new_connection(in_data_dict['ip'], in_data_dict['node_port'])
         if in_data_dict['server_port'] != 0 and (in_data_dict['node_port'] != self.config['server_port']):
             self.server.add_server_identity(in_data_dict)
 
@@ -319,32 +436,55 @@ class AuditNode:
 if __name__ == "__main__":
     a = ['testid_1', 'testid_2', 'testid_3', 'testid_4']
 
-    node_config = {
+    node_config_a = {
         'name': "Node A",
         'ip': "127.0.0.1",
         'node_port': 9876,
         'server_port': 9875
     }
 
-    a_node = AuditNode(node_config)
+    node_config_b = {
+        'name': "Node B",
+        'ip': "127.0.0.1",
+        'node_port': 9871,
+        'server_port': 9870
+    }
 
-    a_node.build_node_trees(a)
+    if len(sys.argv) == 2:
+        if int(sys.argv[1]) == 0:
+            config = node_config_a
+        elif int(sys.argv[1]) == 1:
+            config = node_config_b
+        else:
+            print("Unrecognized input, exiting")
+            sys.exit(1)
+    else:
+        config = node_config_a
+
+    a_node = AuditNode(config)
+
+    a_node.import_node("./node_a_export.txt")
 
     print(a_node.blockchain)
     print(a_node.audit_data)
 
     a_node.start_node()
 
-    time.sleep(30)
+    command = input("? ")
+    while command != "stop":
+        if command == "update":
+            action_a = {
+                'user': "Colton",
+                'action': 'Read a thing',
+                'signature': b'F0F0F0F0'.hex()
+            }
+            a_node.update_block_chain('testid_1', json.dumps(action_a, indent=2))
+        if command == "print":
+            print(a_node.blockchain)
+            print(a_node.audit_data)
+        command = input("? ")
 
-    action_a = {
-        'user': "Colton",
-        'action': 'Read a thing',
-        'signature': b'F0F0F0F0'.hex()
-    }
-    #a_node.update_block_chain('testid_1', json.dumps(action_a, indent=2))
-
-    print(a_node.blockchain)
+    print("Node exiting")
 
     a_node.stop_node()
 

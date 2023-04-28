@@ -103,6 +103,7 @@ class AuditNotifier(threading.Thread):
     def parse_entry(self, data: bytes):
         json_data = json.loads(data.decode())
         if json_data not in self.peer_list:
+            print("Notifier: Parse Entry: Data ({}) not in List ({})".format(json_data, self.peer_list))
             self.peer_list.append(json_data)
             self.new_record_func(json_data)
 

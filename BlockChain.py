@@ -33,7 +33,18 @@ class Blockchain:
 
         return ret_str
 
-    def print_block(self, block):
+    def dedict_block(self, in_dict):
+        ret_block = {
+            'index': in_dict['index'],
+            'timestamp': in_dict['timestamp'],
+            'curr_hash': bytes.fromhex(in_dict['curr_hash']),
+            'data_hash': bytes.fromhex(in_dict['data_hash']),
+            'prev_hash': bytes.fromhex(in_dict['prev_hash'])
+        }
+
+        return ret_block
+
+    def dict_block(self, block):
         ret_block = {
             'index': block['index'],
             'timestamp': block['timestamp'],
@@ -41,6 +52,11 @@ class Blockchain:
             'data_hash': block['data_hash'].hex(),
             'prev_hash': block['prev_hash'].hex()
         }
+
+        return ret_block
+
+    def print_block(self, block):
+        ret_block = self.dict_block(block)
 
         ret_str = json.dumps(ret_block, indent=2)
 
@@ -82,6 +98,15 @@ class Blockchain:
 
         return True
 
+    def prove_new_block(self, new_block_data):
+        print(new_block_data)
+        new_block = self.dedict_block(new_block_data)
+
+        if self.validate_new_block(new_block):
+            return True
+        else:
+            return False
+
     def validate_new_block(self, new_block):
         curr_head = self.chain[-1]
 
@@ -89,6 +114,25 @@ class Blockchain:
             return False
         else:
             return True
+
+    def import_dict(self, in_dict):
+        self.chain = []
+        for block_idx in in_dict.keys():
+            self.chain.append(self.dedict_block(in_dict[block_idx]))
+
+        if self.prove_chain():
+            print("BlockChain::Import Dict: Successfully imported")
+            return True
+        else:
+            print("BlockChain:: Import Dict: Failed to pass block validation")
+            return False
+
+    def export(self):
+        ret_dict = {}
+        for block_idx, block in enumerate(self.chain):
+            ret_dict[block_idx] = self.dict_block(block)
+
+        return ret_dict
 
 
 if __name__ == "__main__":
@@ -110,3 +154,11 @@ if __name__ == "__main__":
     blockchain.add_block(p_block)
 
     print(blockchain)
+
+    out_dict = blockchain.export()
+    print(out_dict)
+
+    blockchain_p = Blockchain()
+    in_status = blockchain_p.import_dict(out_dict)
+
+    print(blockchain_p)
