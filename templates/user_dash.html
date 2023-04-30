@@ -8,8 +8,13 @@
 <h1>Welcome to your User Dashboard</h1>
 <p1>JWT Session Token {{ session['jwt_token'] }}</p1>
 <div id="ButtonSection">
+
     <!-- Create EHR data button -->
-    <button id="view-ehr-data" onclick="window.location.href='/create-ehr-data?token={{ session['jwt_token'] }}'">Create EHR data</button><br><br>
+    <form action="/create-ehr-data?token={{ session['jwt_token'] }}" method="POST">
+        <label for="create-ehr-textbox"></label>
+        <button type="submit">Create EHR data</button>
+        <input type="text" id="create-ehr-textbox" name="create-ehr-textbox" placeholder="Enter EHR Comment" required style="text-align:center"><br><br>
+    </form>
 
     <!-- Delete comments button -->
     <button id="delete-ehr-data" onclick="window.location.href='/delete-ehr-data?token={{ session['jwt_token'] }}'">Delete EHR data</button><br><br>
@@ -17,8 +22,8 @@
     <!-- Modify button -->
     <button id="modify-ehr-data" onclick="window.location.href='/change-ehr-data?token={{ session['jwt_token'] }}'">Modify EHR data</button><br><br>
 
-    <!-- Query button -->
-    <button id="modify-ehr-data" onclick="window.location.href='/query-ehr-data?token={{ session['jwt_token'] }}'">Query EHR data</button><br><br>
+    <!-- Query text box -->
+    <button id="query-ehr-button" onclick="window.location.href='/query-ehr-data?token={{ session['jwt_token'] }}'">Query EHR data</button><br><br>
 
     <!-- Print button -->
     <button id="print-ehr-data" onclick="window.location.href='/print-ehr-data?token={{ session['jwt_token'] }}'">Print EHR data</button><br><br>

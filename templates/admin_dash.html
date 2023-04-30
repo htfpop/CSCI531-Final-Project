@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Dashboard</title>
+</head>
+<body>
+<h1>Welcome to your Admin Dashboard</h1>
+<!--<p1>JWT Session Token {{ session['jwt_token'] }}</p1> -->
+<div id="ButtonSection">
+    <!-- Create EHR data button -->
+    <button id="admin-view-all-ehr" onclick="window.location.href='/admin-view-all-ehr?token={{ session['jwt_token'] }}'">View All EHR Audit Data</button><br><br>
+
+    <!-- Query text box -->
+    <button id="admin-query-ehr-button" onclick="window.location.href='/admin-query-ehr-data?token={{ session['jwt_token'] }}&query=' + document.getElementById('query-ehr-textbox').value">Query User</button>
+    <input type="text" id="query-ehr-textbox" name="query-ehr-data" placeholder="Enter User ID...">
+
+</div>
+<div id="PatientInfo" style="visibility: hidden">
+    <p>Filler</p>
+</div>
+</body>
+</html>
