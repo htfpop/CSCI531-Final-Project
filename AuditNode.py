@@ -62,6 +62,8 @@ class NodeServerComms(Node):
 
         in_dict = data
 
+        print(f'\n\n{in_dict}\n\n')
+
         if in_dict['action'] == 'ADD_TO_USER':
             user_id = in_dict['data']['user_id']
             user_action = in_dict['data']['action']
@@ -434,7 +436,7 @@ class AuditNode:
 
 
 if __name__ == "__main__":
-    a = ['testid_1', 'testid_2', 'testid_3', 'testid_4']
+    a = ['328510', 'testid_2', 'testid_3', 'testid_4']
 
     node_config_a = {
         'name': "Node A",
@@ -463,7 +465,9 @@ if __name__ == "__main__":
 
     a_node = AuditNode(config)
 
-    a_node.import_node("./node_a_export.txt")
+    #a_node.import_node("./node_a_export.txt")
+    a_node.build_node_trees(a)
+    a_node.export_node("./node_a_export.txt")
 
     print(a_node.blockchain)
     print(a_node.audit_data)

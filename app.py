@@ -4,7 +4,7 @@ from urllib.parse import urlencode
 import jwt
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import Flask, render_template, session, request, jsonify, make_response, redirect, url_for, flash
+from flask import Flask, render_template, session, request, jsonify, make_response, redirect, url_for, flash, json
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.sql import func
 import bcrypt
@@ -21,7 +21,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(BASE_DIR, 'p
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-#test
+# test
 locl_host = "127.0.0.1"
 locl_port = 9890
 name = "Server A"
@@ -36,6 +36,7 @@ notifier_config = {
     }
 }
 aserver = AuditServer(locl_host, locl_port, name, notifier_config)
+aserver.start()
 
 # Actions
 ACT_CREATE = 0xC0FFEE01
@@ -140,9 +141,6 @@ class Patients(db.Model):
         salted_password = (password + self.password_salt).encode('utf-8')
         return bcrypt.checkpw(salted_password, self.password_hash.encode('utf-8'))
 
-    def __repr__(self):
-        return f'<Patient {self.firstname}>'
-
 
 def token_required(function):
     """
@@ -166,7 +164,12 @@ def token_required(function):
 
     return decorated
 
+
 def token_handle():
+    """
+    Generic method that handles updating JWT Token if a valid link was processed
+    :return: new JWT token with updated expiration date
+    """
     token = request.args.get('token')
     payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
     expiration_time = datetime.strptime(payload['expiration'], '%Y-%m-%d %H:%M:%S.%f')
@@ -183,14 +186,14 @@ def token_handle():
     return new_token
 
 
-@app.route('/public')
-def public():
-    return 'For Public'
-
-
 @app.route('/create-ehr-data', methods=['POST'])
 @token_required
 def create_ehr_data():
+    """
+    This route will handle user creating their own EHR data
+    <WARN> Limited capabilities and set up only front-end interface for our course <WARN>
+    :return: Render confirmation webpage
+    """
     token = token_handle()
     payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
     email = payload['email']
@@ -203,31 +206,19 @@ def create_ehr_data():
 
     id = user.get_id(user)
 
-    aserver.append_user_record(user_id=id, action="placeholder")
+    aserver.append_user_record(user_id=str(id), action="placeholder")
 
     return render_template('00_Create_EHR.html')
 
 
-
-# @app.route('/create-ehr-data')
-# @token_required
-# def create_ehr():
-#     token = token_handle()
-#     payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
-#     email = payload['email']
-#
-#     user: Patients = Patients.query.filter_by(email=email).first()
-#
-#     if not user:
-#         return jsonify({'ERROR': f'User with {email} not in database'})
-#
-#     id = user.get_id(user)
-#
-#     return render_template('00_Create_EHR.html')
-
 @app.route('/delete-ehr-data')
 @token_required
 def delete_ehr():
+    """
+    This route will handle user deleting their own EHR data - PROTOTYPE ONLY
+    <WARN> Limited capabilities and set up only front-end interface for our course <WARN>
+    :return: Render confirmation webpage
+    """
     token = token_handle()
     payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
     email = payload['email']
@@ -241,9 +232,15 @@ def delete_ehr():
 
     return render_template('01_Delete_EHR.html')
 
+
 @app.route('/change-ehr-data')
 @token_required
 def change_ehr():
+    """
+    This route will handle user changing their own EHR data - PROTOTYPE ONLY
+    <WARN> Limited capabilities and set up only front-end interface for our course <WARN>
+    :return: Render confirmation webpage
+    """
     token = token_handle()
     payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
     email = payload['email']
@@ -257,9 +254,15 @@ def change_ehr():
 
     return render_template('02_Change_EHR.html')
 
+
 @app.route('/query-ehr-data')
 @token_required
 def query_ehr():
+    """
+    This route will handle a user querying their own EHR data - PROTOTYPE ONLY
+    <WARN> Limited capabilities and set up only front-end interface for our course <WARN>
+    :return: Render confirmation webpage
+    """
     token = token_handle()
     payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
     email = payload['email']
@@ -271,11 +274,20 @@ def query_ehr():
 
     id = user.get_id(user)
 
-    return render_template('03_Query_EHR.html')
+    out_dict = aserver.query_user(user_id=str(id), action="placeholder")
+    return json.dumps(out_dict, indent=2)
+
+    #return render_template('03_Query_EHR.html')
+
 
 @app.route('/print-ehr-data')
 @token_required
 def print_ehr():
+    """
+    This route will handle a user printing their own EHR data - PROTOTYPE ONLY
+    <WARN> Limited capabilities and set up only front-end interface for our course <WARN>
+    :return: Render confirmation webpage
+    """
     token = token_handle()
     payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
     email = payload['email']
@@ -289,9 +301,15 @@ def print_ehr():
 
     return render_template('04_Print_EHR.html')
 
+
 @app.route('/copy-ehr-data')
 @token_required
 def copy_ehr():
+    """
+    This route will handle a user copying their own EHR data - PROTOTYPE ONLY
+    <WARN> Limited capabilities and set up only front-end interface for our course <WARN>
+    :return: Render confirmation webpage
+    """
     token = token_handle()
     payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
     email = payload['email']
@@ -306,13 +324,12 @@ def copy_ehr():
     return render_template('05_Copy_EHR.html')
 
 
-
 @app.route('/auth')
 @token_required
 def auth():
     """
-    Flask successful login with JWT
-    :return: None
+    Successful login using valid credentials
+    :return: Render either user or administrator dashboard
     """
     token = request.args.get('token')
     payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
@@ -341,6 +358,7 @@ def auth():
         return render_template('admin_dash.html')
     else:
         return render_template('user_dash.html')
+
 
 @app.route('/')
 def home():
@@ -398,7 +416,13 @@ def post_signup():
 
 
 def check_admin(email: str):
+    """
+    This function will determine if a user is an admin or not
+    :param email: User email
+    :return: T: User is admin / F: User is not an admin
+    """
     return email.lower().endswith('@audit.usc.edu')
+
 
 @app.route('/login', methods=['POST'])
 def post_login():
@@ -432,7 +456,7 @@ def post_login():
         redirect_url = url_for('auth') + '?' + query_string
         return redirect(redirect_url)
     else:
-        return make_response('Unable to verify', 403, {'WWW-Authenticate': 'Basic Realm:"Authentication Failed"'})
+        return render_template('login_failure.html')
 
 
 def db_check():
@@ -440,7 +464,6 @@ def db_check():
     Check if DB is instantiated
     :return: None
     """
-
     if db.session.query(Patients).count() == 0:
         for t in range(1, 11, 1):
             FN = 'Patient' + str(t) + 'FN'
