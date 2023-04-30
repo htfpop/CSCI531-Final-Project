@@ -223,7 +223,7 @@ class AuditData:
 
                 for entry_idx, entry in enumerate(self.user_entry_dict[user_key]):
                     action = entry['action']
-                    action_decode = bytes.fromhex(action).decode()
+                    action_decode = json.loads(bytes.fromhex(action).decode())  # changed 4/30
                     user_dict[entry_idx] = action_decode
 
                 return user_dict
