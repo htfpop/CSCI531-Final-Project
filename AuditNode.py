@@ -1,3 +1,4 @@
+import random
 import threading
 
 import pymerkle
@@ -7,6 +8,10 @@ import json
 import time
 import sys
 from p2pnetwork.node import Node
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding
+from hashlib import sha256
+import hmac
 
 
 import AuditData
@@ -16,6 +21,8 @@ import AuditNotifier
 RESPONSE_TIMEOUT = 20
 VOTE_THRESHOLD = .5
 
+DATA_KEY = b"\x16\x93=f@\x0b\x84\xb9R'\xb7_\x11\xa9\x9a\x1a\x90\xf9\x10=\x17\x94r\x18\x92\xe9<zIk\x07!"
+HMAC_KEY = b"L\xc0I\xa8\xf8x\xfc\x12iBuA\xac\xbd\x1a\x08\xe1\x042\xa6u\xbb\xdf0\xb8k\x1e\xba\xc5\xa2\xb3\xd1"
 
 class NodeServerComms(Node):
     def __init__(self, config, func_add_action, func_query_user):
@@ -309,10 +316,7 @@ class AuditNode:
             'record': record
         }
 
-        # query_json = json.dumps(query, indent=2)  # modified 4/30
-
         return True, query
-
 
     def update_block_chain(self, user_id, new_record):
         new_entry = self.audit_data.add_to_user(user_id, new_record)
@@ -370,8 +374,25 @@ class AuditNode:
 
         export_str = json.dumps(node_export_dict, indent=2)
 
+        # Generate HMAC signature
+        nonce = random.randbytes(8).hex().upper()
+        signature = self.digest_data(nonce + export_str, HMAC_KEY)
+        out_dict = {
+            'nonce': nonce,
+            'payload': export_str,
+            'signature': signature
+        }
+        export_export_pkg = json.dumps(out_dict, indent=2)
+
+        # Encrypt Output
+        export_bytes = export_export_pkg.encode()
+        export_encrypt = self.encrypt_data(export_bytes, DATA_KEY)
+        export_encrypt_hex = export_encrypt.hex()
+
         with open(filepath, "w") as out_file:
-            out_file.write(export_str)
+            out_file.write(export_encrypt_hex)
+
+        print("Audit Node:: Export Node: Exported node successful")
 
     def import_node(self, filepath):
         in_data = None
@@ -379,7 +400,22 @@ class AuditNode:
             in_data = in_file.read()
 
         if in_data:
-            in_dict = json.loads(in_data)
+            # Decrypt
+            in_data_bytes = bytes.fromhex(in_data)
+            data_decrypt = self.decrypt_data(in_data_bytes, DATA_KEY)
+            plaintext_str = data_decrypt.decode()
+
+            # Check HMAC
+            plaintext_dict = json.loads(plaintext_str)
+            in_nonce = plaintext_dict['nonce']
+            in_sig = plaintext_dict['signature']
+            in_payload = plaintext_dict['payload']
+            new_sig = self.digest_data(in_nonce + in_payload, HMAC_KEY)
+            if not hmac.compare_digest(in_sig, new_sig):
+                print("Audit Node:: Import Node: Imported node data failed integrity check.")
+                return False
+
+            in_dict = json.loads(in_payload)
             self.audit_data = AuditData.AuditData()
             self.audit_data.import_dict(in_dict['audit_data'])
 
@@ -434,6 +470,41 @@ class AuditNode:
         )
         self.blockchain.add_block(p_block)
 
+    def encrypt_data(self, data_in, key):
+        cipher = Cipher(algorithms.AES256(key), modes.ECB())
+        padder = padding.PKCS7(256).padder()
+
+        encryptor = cipher.encryptor()
+        padder_data = padder.update(data_in)
+        padder_data += padder.finalize()
+
+        ct_out = encryptor.update(padder_data) + encryptor.finalize()
+
+        return ct_out
+
+    def decrypt_data(self, ct_in, key):
+        cipher = Cipher(algorithms.AES256(key), modes.ECB())
+        unpadder = padding.PKCS7(256).unpadder()
+
+        decryptor = cipher.decryptor()
+        pt = decryptor.update(ct_in) + decryptor.finalize()
+
+        unpadderdata = unpadder.update(pt)
+        unpadderdata += unpadder.finalize()
+
+        pt_out = unpadderdata
+
+        return pt_out
+
+    def digest_data(self, message, key):
+        signature = hmac.new(
+            key,
+            msg=message.encode(),
+            digestmod=hashlib.sha256
+        ).hexdigest().upper()
+
+        return signature
+
 
 if __name__ == "__main__":
     a = ['328510', 'testid_2', 'testid_3', 'testid_4']
@@ -465,9 +536,13 @@ if __name__ == "__main__":
 
     a_node = AuditNode(config)
 
+<<<<<<< HEAD
     #a_node.import_node("./node_a_export.txt")
     a_node.build_node_trees(a)
     a_node.export_node("./node_a_export.txt")
+=======
+    a_node.import_node("./node_a_export.enc")
+>>>>>>> dev/AuditServer
 
     print(a_node.blockchain)
     print(a_node.audit_data)

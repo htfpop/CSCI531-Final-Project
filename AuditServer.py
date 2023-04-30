@@ -154,6 +154,8 @@ class AuditServer:
             idx = idx + 1
             time.sleep(1)
 
+        # Disconnect Node
+
         if self.q_status:
             print("Audit Server:: Perform Query: Retrieved User Record")
             return True
@@ -215,7 +217,6 @@ class AuditServer:
         self.server.join()
         self.not_server.stop()
         print("Server: Server Nodes stopped.")
-
 
 
 if __name__ == "__main__":
