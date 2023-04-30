@@ -309,9 +309,9 @@ class AuditNode:
             'record': record
         }
 
-        query_json = json.dumps(query)
+        # query_json = json.dumps(query, indent=2)  # modified 4/30
 
-        return True, query_json
+        return True, query
 
 
     def update_block_chain(self, user_id, new_record):
