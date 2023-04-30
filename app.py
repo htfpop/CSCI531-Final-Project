@@ -173,7 +173,7 @@ def token_handle():
 
     # Check if the session has timed out
     if datetime.utcnow() >= expiration_time:
-        return jsonify({'Message': 'Session has timed out'})
+        return render_template('session_timeout.html')
 
     # Update the expiration time to extend the session
     new_expiration_time = datetime.utcnow() + TIMEOUT
@@ -188,12 +188,13 @@ def public():
     return 'For Public'
 
 
-@app.route('/create-ehr-data')
+@app.route('/create-ehr-data', methods=['POST'])
 @token_required
-def create_ehr():
+def create_ehr_data():
     token = token_handle()
     payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
     email = payload['email']
+    session['create-ehr-data'] = request.form['create-ehr-textbox']
 
     user: Patients = Patients.query.filter_by(email=email).first()
 
@@ -202,7 +203,27 @@ def create_ehr():
 
     id = user.get_id(user)
 
+    aserver.append_user_record(user_id=id, action="placeholder")
+
     return render_template('00_Create_EHR.html')
+
+
+
+# @app.route('/create-ehr-data')
+# @token_required
+# def create_ehr():
+#     token = token_handle()
+#     payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+#     email = payload['email']
+#
+#     user: Patients = Patients.query.filter_by(email=email).first()
+#
+#     if not user:
+#         return jsonify({'ERROR': f'User with {email} not in database'})
+#
+#     id = user.get_id(user)
+#
+#     return render_template('00_Create_EHR.html')
 
 @app.route('/delete-ehr-data')
 @token_required
@@ -235,6 +256,7 @@ def change_ehr():
     id = user.get_id(user)
 
     return render_template('02_Change_EHR.html')
+
 @app.route('/query-ehr-data')
 @token_required
 def query_ehr():
@@ -299,7 +321,7 @@ def auth():
 
     # Check if the session has timed out
     if datetime.utcnow() >= expiration_time:
-        return jsonify({'Message': 'Session has timed out'})
+        return render_template('session_timeout.html')
 
     # Update the expiration time to extend the session
     new_expiration_time = datetime.utcnow() + TIMEOUT
@@ -314,17 +336,11 @@ def auth():
     session['jwt_token'] = new_token
     session['uid'] = id
 
-    return render_template('user_dash.html')
-
-    # return jsonify({
-    #     'Message1': f'JWT Verified, welcome to dashboard {email}!',
-    #     'Message2': f'Your session ends at: {expiration_time}',
-    #     'Message3': f'Current time: {datetime.utcnow()}',
-    #     'Message4': f'UID: {id}',
-    #     'Message5': f'Action: {hex(ACT_QUERY)}',
-    #     'NewToken': new_token
-    # })
-
+    # admin dashboard set during /login route
+    if session['admin']:
+        return render_template('admin_dash.html')
+    else:
+        return render_template('user_dash.html')
 
 @app.route('/')
 def home():
@@ -365,6 +381,11 @@ def post_signup():
     pw = request.form['new-password']
     confirm_pw = request.form['confirm-password']
 
+    admin_prevent = check_admin(email)
+
+    if admin_prevent:
+        return render_template('signup_failure_admin_prevent.html')
+
     if pw != confirm_pw:
         return render_template('err_pw_mismatch.html')
     else:
@@ -375,6 +396,9 @@ def post_signup():
         else:
             return render_template('signup_failure.html')
 
+
+def check_admin(email: str):
+    return email.lower().endswith('@audit.usc.edu')
 
 @app.route('/login', methods=['POST'])
 def post_login():
@@ -391,10 +415,14 @@ def post_login():
     if user is not None and user.check_password(self=user, password=password):
         session['logged_in'] = True
         session.permanent = True
+
+        # global admin check
+        session['admin'] = check_admin(email)
+
         token = jwt.encode(
             payload={
                 'email': request.form['Email'],
-                'expiration': str(datetime.utcnow() + timedelta(seconds=30))
+                'expiration': str(datetime.utcnow() + TIMEOUT)
             },
             key=app.config['SECRET_KEY'],
             algorithm='HS256'
@@ -410,23 +438,20 @@ def post_login():
 def db_check():
     """
     Check if DB is instantiated
-    <WARN> I found my database located here (might be different depending on setup):                     <WARN>
-    <WARN> %APPDATA%\\Local\\JetBrains\\Toolbox\\apps\\PyCharm-P\\ch-0\\231.8109.197\\jbr\\bin\\instance <WARN>
-
     :return: None
     """
 
     if db.session.query(Patients).count() == 0:
         for t in range(1, 11, 1):
-            FN = 'Test' + str(t) + 'FN'
-            LN = 'Test' + str(t) + 'LN'
-            email = 'T' + str(t) + '@usc.edu'
+            FN = 'Patient' + str(t) + 'FN'
+            LN = 'Patient' + str(t) + 'LN'
+            email = 'Patient' + str(t) + '@usc.edu'
             Patients.create(FN, LN, email, '1234')
 
         for a in range(1, 4, 1):
             FN = 'Audit' + str(a) + 'FN'
             LN = 'Audit' + str(a) + 'LN'
-            email = 'Auditor' + str(a) + '@usc.edu'
+            email = 'Auditor' + str(a) + '@audit.usc.edu'
             Patients.create(FN, LN, email, '1234')
     else:
         print('SQL Table already populated')
@@ -434,7 +459,7 @@ def db_check():
         for patient in patients:
             dt: str = patient.created_at.strftime('%Y-%m-%d %H:%M:%S')
             print(
-                f'{patient.firstname.ljust(10)} {patient.lastname.ljust(10)} {patient.email.ljust(20)} '
+                f'{patient.firstname.ljust(15)} {patient.lastname.ljust(15)} {patient.email.ljust(30)} '
                 f'{str(patient.id).ljust(10)} {dt.ljust(20)}')
 
 
@@ -442,4 +467,4 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
         db_check()
-    app.run(debug=True)
+        app.run(debug=True)
