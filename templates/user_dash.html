@@ -30,6 +30,9 @@
 
     <!-- Copy button -->
     <button id="copy-ehr-data" onclick="window.location.href='/copy-ehr-data?token={{ session['jwt_token'] }}'">Copy EHR data</button><br><br>
+
+    <!-- Logout button -->
+    <button id="user-logout" onclick="window.location.href='/user-logout?token={{ session['jwt_token'] }}'">Log out</button><br><br>
 </div>
 <div id="PatientInfo" style="visibility: hidden">
     <p>Filler</p>

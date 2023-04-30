@@ -9,18 +9,22 @@
 
         <h1>Patient issued query EHR data request</h1>
 
-        <h2><u>EHR Log:</u></h2>
-        <p1>Placeholder 1</p1><br>
-        <p1>Placeholder 2</p1><br>
-        <p1>Placeholder 3</p1><br>
-        <p1>Placeholder 4</p1><br>
-        <p1>Placeholder 5</p1><br>
-        <p1>Placeholder 6</p1><br>
-        <p1>Placeholder 7</p1><br>
-        <p1>Placeholder 8</p1><br>
-        <p1>Placeholder 9</p1><br>
-        <p1>Placeholder 10</p1><br>
-        <h2><u>Dashboard</u></h2><br>
+
+        <table id="q_table">
+            <tr>
+                <th style="width:100px;border:1px solid black">User ID</th>
+                <th style="width:100px;border:1px solid black">Timestamp</th>
+                <th style="width:100px;border:1px solid black">Action</th>
+            </tr>
+            {% for key, value in data['record'].items() %}
+                <tr>
+                    <td style="width:150px; text-align:center;border:1px solid black">{{ value['user_id'] }}</td>
+                    <td style="width:200px; text-align:center;border:1px solid black">{{ value['timestamp'] }}</td>
+                    <td style="width:150px; text-align:center;border:1px solid black">{{ value['action'] }}</td>
+                </tr>
+            {% endfor %}
+        </table>
+
          <button id="dashboard" onclick="window.location.href='/auth?token={{ session['jwt_token'] }}'">User Dashboard</button><br><br>
 
     </body>

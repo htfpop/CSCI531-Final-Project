@@ -206,7 +206,7 @@ def create_ehr_data():
 
     id = user.get_id(user)
 
-    aserver.append_user_record(user_id=str(id), action="placeholder")
+    aserver.append_user_record(user_id=str(id), action="Create_EHR")
 
     return render_template('00_Create_EHR.html')
 
@@ -229,6 +229,7 @@ def delete_ehr():
         return jsonify({'ERROR': f'User with {email} not in database'})
 
     id = user.get_id(user)
+    aserver.append_user_record(user_id=str(id), action="DELETE")
 
     return render_template('01_Delete_EHR.html')
 
@@ -251,6 +252,7 @@ def change_ehr():
         return jsonify({'ERROR': f'User with {email} not in database'})
 
     id = user.get_id(user)
+    aserver.append_user_record(user_id=str(id), action="CHANGE")
 
     return render_template('02_Change_EHR.html')
 
@@ -275,9 +277,31 @@ def query_ehr():
     id = user.get_id(user)
 
     out_dict = aserver.query_user(user_id=str(id), action="placeholder")
-    return json.dumps(out_dict, indent=2)
+    aserver.append_user_record(user_id=str(id), action="QUERY")
 
-    #return render_template('03_Query_EHR.html')
+    return render_template('03_Query_EHR.html', data=out_dict)
+
+@app.route('/user-logout')
+@token_required
+def logout():
+    token = token_handle()
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    email = payload['email']
+
+    user: Patients = Patients.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({'ERROR': f'User with {email} not in database'})
+
+    session['jwt_token'] = None
+    session['uid'] = None
+    session['Logged_In'] = False
+    session['admin'] = False
+
+    id = user.get_id(user)
+    aserver.append_user_record(user_id=str(id), action="LOGOUT")
+
+    return redirect('/')
 
 
 @app.route('/print-ehr-data')
@@ -298,6 +322,7 @@ def print_ehr():
         return jsonify({'ERROR': f'User with {email} not in database'})
 
     id = user.get_id(user)
+    aserver.append_user_record(user_id=str(id), action="PRINT")
 
     return render_template('04_Print_EHR.html')
 
@@ -320,6 +345,7 @@ def copy_ehr():
         return jsonify({'ERROR': f'User with {email} not in database'})
 
     id = user.get_id(user)
+    aserver.append_user_record(user_id=str(id), action="COPY")
 
     return render_template('05_Copy_EHR.html')
 
@@ -353,6 +379,10 @@ def auth():
     session['jwt_token'] = new_token
     session['uid'] = id
 
+    if session['Logged_In'] is False:
+        aserver.append_user_record(user_id=str(id), action='LOGIN')
+        session['Logged_In'] = True
+
     # admin dashboard set during /login route
     if session['admin']:
         return render_template('admin_dash.html')
@@ -375,6 +405,7 @@ def login():
     Flask login page
     :return: render of EHR login page
     """
+    session['Logged_In'] = False
     return render_template('login.html')
 
 
@@ -487,6 +518,7 @@ def db_check():
 
 
 if __name__ == '__main__':
+    # test()
     with app.app_context():
         db.create_all()
         db_check()
