@@ -4,10 +4,12 @@ from urllib.parse import urlencode
 import jwt
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import Flask, render_template, session, request, jsonify, make_response, redirect, url_for, flash
+from flask import Flask, render_template, session, request, jsonify, make_response, redirect, url_for, flash, json
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.sql import func
 import bcrypt
+
+from AuditServer import AuditServer
 
 # GLOBAL CONFIG
 TIMEOUT = timedelta(seconds=300)
@@ -18,6 +20,31 @@ app.config['PERMANENT_SESSION_LIFETIME'] = TIMEOUT
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(BASE_DIR, 'patient.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
+
+# test
+locl_host = "127.0.0.1"
+locl_port = 9890
+name = "Server A"
+notifier_config = {
+    'name': "Audit Server",
+    'rate': 5,
+    'identity': {
+        'name': "Audit Server",
+        'ip': "127.0.0.1",
+        'node_port': 0,
+        'server_port': 9890
+    }
+}
+aserver = AuditServer(locl_host, locl_port, name, notifier_config)
+aserver.start()
+
+# Actions
+ACT_CREATE = 0xC0FFEE01
+ACT_DELETE = 0xC0FFEE02
+ACT_CHANGE = 0xF00D4DAD
+ACT_QUERY = 0xFACE0FFF
+ACT_PRINT = 0xBEEF4DAD
+ACT_COPY = 0xCAFECAFE
 
 
 class Patients(db.Model):
@@ -77,13 +104,21 @@ class Patients(db.Model):
             return True
 
     @staticmethod
-    def get_id(self): return self.id
+    def get_id(self):
+        return self.id
+
     @staticmethod
-    def get_firstname(self): return self.firstname
+    def get_firstname(self):
+        return self.firstname
+
     @staticmethod
-    def get_lastname(self): return self.lastname
+    def get_lastname(self):
+        return self.lastname
+
     @staticmethod
-    def get_email(self): return self.email
+    def get_email(self):
+        return self.email
+
     @staticmethod
     def set_password(self, password: str):
         """
@@ -106,9 +141,6 @@ class Patients(db.Model):
         salted_password = (password + self.password_salt).encode('utf-8')
         return bcrypt.checkpw(salted_password, self.password_hash.encode('utf-8'))
 
-    def __repr__(self):
-        return f'<Patient {self.firstname}>'
-
 
 def token_required(function):
     """
@@ -116,6 +148,7 @@ def token_required(function):
     :param function: Function requiring token_required wrapping
     :return: JSON error code or valid JWT token
     """
+
     @wraps(function)
     def decorated(*args, **kwargs):
         token = request.args.get('token')
@@ -132,17 +165,197 @@ def token_required(function):
     return decorated
 
 
-@app.route('/public')
-def public():
-    return 'For Public'
+def token_handle():
+    """
+    Generic method that handles updating JWT Token if a valid link was processed
+    :return: new JWT token with updated expiration date
+    """
+    token = request.args.get('token')
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    expiration_time = datetime.strptime(payload['expiration'], '%Y-%m-%d %H:%M:%S.%f')
+
+    # Check if the session has timed out
+    if datetime.utcnow() >= expiration_time:
+        return render_template('session_timeout.html')
+
+    # Update the expiration time to extend the session
+    new_expiration_time = datetime.utcnow() + TIMEOUT
+    payload['expiration'] = str(new_expiration_time)
+    new_token = jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
+
+    return new_token
+
+
+@app.route('/create-ehr-data', methods=['POST'])
+@token_required
+def create_ehr_data():
+    """
+    This route will handle user creating their own EHR data
+    <WARN> Limited capabilities and set up only front-end interface for our course <WARN>
+    :return: Render confirmation webpage
+    """
+    token = token_handle()
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    email = payload['email']
+    session['create-ehr-data'] = request.form['create-ehr-textbox']
+
+    user: Patients = Patients.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({'ERROR': f'User with {email} not in database'})
+
+    id = user.get_id(user)
+
+    aserver.append_user_record(user_id=str(id), action="Create_EHR")
+
+    return render_template('00_Create_EHR.html')
+
+
+@app.route('/delete-ehr-data')
+@token_required
+def delete_ehr():
+    """
+    This route will handle user deleting their own EHR data - PROTOTYPE ONLY
+    <WARN> Limited capabilities and set up only front-end interface for our course <WARN>
+    :return: Render confirmation webpage
+    """
+    token = token_handle()
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    email = payload['email']
+
+    user: Patients = Patients.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({'ERROR': f'User with {email} not in database'})
+
+    id = user.get_id(user)
+    aserver.append_user_record(user_id=str(id), action="DELETE")
+
+    return render_template('01_Delete_EHR.html')
+
+
+@app.route('/change-ehr-data')
+@token_required
+def change_ehr():
+    """
+    This route will handle user changing their own EHR data - PROTOTYPE ONLY
+    <WARN> Limited capabilities and set up only front-end interface for our course <WARN>
+    :return: Render confirmation webpage
+    """
+    token = token_handle()
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    email = payload['email']
+
+    user: Patients = Patients.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({'ERROR': f'User with {email} not in database'})
+
+    id = user.get_id(user)
+    aserver.append_user_record(user_id=str(id), action="CHANGE")
+
+    return render_template('02_Change_EHR.html')
+
+
+@app.route('/query-ehr-data')
+@token_required
+def query_ehr():
+    """
+    This route will handle a user querying their own EHR data - PROTOTYPE ONLY
+    <WARN> Limited capabilities and set up only front-end interface for our course <WARN>
+    :return: Render confirmation webpage
+    """
+    token = token_handle()
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    email = payload['email']
+
+    user: Patients = Patients.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({'ERROR': f'User with {email} not in database'})
+
+    id = user.get_id(user)
+
+    out_dict = aserver.query_user(user_id=str(id), action="placeholder")
+    aserver.append_user_record(user_id=str(id), action="QUERY")
+
+    return render_template('03_Query_EHR.html', data=out_dict)
+
+@app.route('/user-logout')
+@token_required
+def logout():
+    token = token_handle()
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    email = payload['email']
+
+    user: Patients = Patients.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({'ERROR': f'User with {email} not in database'})
+
+    session['jwt_token'] = None
+    session['uid'] = None
+    session['Logged_In'] = False
+    session['admin'] = False
+
+    id = user.get_id(user)
+    aserver.append_user_record(user_id=str(id), action="LOGOUT")
+
+    return redirect('/')
+
+
+@app.route('/print-ehr-data')
+@token_required
+def print_ehr():
+    """
+    This route will handle a user printing their own EHR data - PROTOTYPE ONLY
+    <WARN> Limited capabilities and set up only front-end interface for our course <WARN>
+    :return: Render confirmation webpage
+    """
+    token = token_handle()
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    email = payload['email']
+
+    user: Patients = Patients.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({'ERROR': f'User with {email} not in database'})
+
+    id = user.get_id(user)
+    aserver.append_user_record(user_id=str(id), action="PRINT")
+
+    return render_template('04_Print_EHR.html')
+
+
+@app.route('/copy-ehr-data')
+@token_required
+def copy_ehr():
+    """
+    This route will handle a user copying their own EHR data - PROTOTYPE ONLY
+    <WARN> Limited capabilities and set up only front-end interface for our course <WARN>
+    :return: Render confirmation webpage
+    """
+    token = token_handle()
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    email = payload['email']
+
+    user: Patients = Patients.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({'ERROR': f'User with {email} not in database'})
+
+    id = user.get_id(user)
+    aserver.append_user_record(user_id=str(id), action="COPY")
+
+    return render_template('05_Copy_EHR.html')
 
 
 @app.route('/auth')
 @token_required
 def auth():
     """
-    Flask successful login with JWT
-    :return: None
+    Successful login using valid credentials
+    :return: Render either user or administrator dashboard
     """
     token = request.args.get('token')
     payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
@@ -151,21 +364,30 @@ def auth():
 
     # Check if the session has timed out
     if datetime.utcnow() >= expiration_time:
-        return jsonify({'Message': 'Session has timed out'})
+        return render_template('session_timeout.html')
 
     # Update the expiration time to extend the session
     new_expiration_time = datetime.utcnow() + TIMEOUT
     payload['expiration'] = str(new_expiration_time)
     new_token = jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
 
-    return render_template('user_dash.html')
+    user: Patients = Patients.query.filter_by(email=email).first()
+    if not user:
+        return jsonify({'ERROR': f'User with {email} not in database'})
 
-    # return jsonify({
-    #     'Message1': f'JWT Verified, welcome to dashboard {email}!',
-    #     'Message2': f'Your session ends at: {expiration_time}',
-    #     'Message3': f'Current time: {datetime.utcnow()}',
-    #     'NewToken': new_token
-    # })
+    id = user.get_id(user)
+    session['jwt_token'] = new_token
+    session['uid'] = id
+
+    if session['Logged_In'] is False:
+        aserver.append_user_record(user_id=str(id), action='LOGIN')
+        session['Logged_In'] = True
+
+    # admin dashboard set during /login route
+    if session['admin']:
+        return render_template('admin_dash.html')
+    else:
+        return render_template('user_dash.html')
 
 
 @app.route('/')
@@ -183,6 +405,7 @@ def login():
     Flask login page
     :return: render of EHR login page
     """
+    session['Logged_In'] = False
     return render_template('login.html')
 
 
@@ -207,6 +430,11 @@ def post_signup():
     pw = request.form['new-password']
     confirm_pw = request.form['confirm-password']
 
+    admin_prevent = check_admin(email)
+
+    if admin_prevent:
+        return render_template('signup_failure_admin_prevent.html')
+
     if pw != confirm_pw:
         return render_template('err_pw_mismatch.html')
     else:
@@ -216,6 +444,16 @@ def post_signup():
             return render_template('signup_success.html')
         else:
             return render_template('signup_failure.html')
+
+
+def check_admin(email: str):
+    """
+    This function will determine if a user is an admin or not
+    :param email: User email
+    :return: T: User is admin / F: User is not an admin
+    """
+    return email.lower().endswith('@audit.usc.edu')
+
 
 @app.route('/login', methods=['POST'])
 def post_login():
@@ -232,10 +470,14 @@ def post_login():
     if user is not None and user.check_password(self=user, password=password):
         session['logged_in'] = True
         session.permanent = True
+
+        # global admin check
+        session['admin'] = check_admin(email)
+
         token = jwt.encode(
             payload={
                 'email': request.form['Email'],
-                'expiration': str(datetime.utcnow() + timedelta(seconds=30))
+                'expiration': str(datetime.utcnow() + TIMEOUT)
             },
             key=app.config['SECRET_KEY'],
             algorithm='HS256'
@@ -245,29 +487,25 @@ def post_login():
         redirect_url = url_for('auth') + '?' + query_string
         return redirect(redirect_url)
     else:
-        return make_response('Unable to verify', 403, {'WWW-Authenticate': 'Basic Realm:"Authentication Failed"'})
+        return render_template('login_failure.html')
 
 
 def db_check():
     """
     Check if DB is instantiated
-    <WARN> I found my database located here (might be different depending on setup):                     <WARN>
-    <WARN> %APPDATA%\\Local\\JetBrains\\Toolbox\\apps\\PyCharm-P\\ch-0\\231.8109.197\\jbr\\bin\\instance <WARN>
-
     :return: None
     """
-
     if db.session.query(Patients).count() == 0:
         for t in range(1, 11, 1):
-            FN = 'Test' + str(t) + 'FN'
-            LN = 'Test' + str(t) + 'LN'
-            email = 'T' + str(t) + '@usc.edu'
+            FN = 'Patient' + str(t) + 'FN'
+            LN = 'Patient' + str(t) + 'LN'
+            email = 'Patient' + str(t) + '@usc.edu'
             Patients.create(FN, LN, email, '1234')
 
         for a in range(1, 4, 1):
             FN = 'Audit' + str(a) + 'FN'
             LN = 'Audit' + str(a) + 'LN'
-            email = 'Auditor' + str(a) + '@usc.edu'
+            email = 'Auditor' + str(a) + '@audit.usc.edu'
             Patients.create(FN, LN, email, '1234')
     else:
         print('SQL Table already populated')
@@ -275,12 +513,13 @@ def db_check():
         for patient in patients:
             dt: str = patient.created_at.strftime('%Y-%m-%d %H:%M:%S')
             print(
-                f'{patient.firstname.ljust(10)} {patient.lastname.ljust(10)} {patient.email.ljust(20)} '
+                f'{patient.firstname.ljust(15)} {patient.lastname.ljust(15)} {patient.email.ljust(30)} '
                 f'{str(patient.id).ljust(10)} {dt.ljust(20)}')
 
 
 if __name__ == '__main__':
+    # test()
     with app.app_context():
         db.create_all()
         db_check()
-    app.run(debug=True)
+        app.run(debug=True)
