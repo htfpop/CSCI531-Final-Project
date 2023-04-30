@@ -5,9 +5,6 @@ import datetime
 import hashlib
 import json
 import time
-
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import dh
 from p2pnetwork.node import Node
 import random
 
@@ -20,9 +17,6 @@ VOTE_THRESHOLD = .5
 class NodeServerComms(Node):
     def __init__(self, host, port, audit_node_name, return_status_func, report_query_status_func):
         super(NodeServerComms, self).__init__(host, port, audit_node_name, None, 0)
-        self.private_key = None
-        self.public_key = None
-        self.shared_key = None
         self.node_name = audit_node_name
         self.report_status_func = return_status_func
         self.report_query_status_func = report_query_status_func
@@ -32,16 +26,10 @@ class NodeServerComms(Node):
             self.node_name,
             connected_node.id))
 
-        if self.shared_key is None:
-            self.init_dh_key_exchange(connected_node)
-
     def inbound_node_connected(self, connected_node):
         print("Node ({}):: inbound_node_connected: Connected to peer node: {}".format(
             self.node_name,
             connected_node.id))
-
-        if self.shared_key is None:
-            self.init_dh_key_exchange(connected_node)
 
     def outbound_node_disconnected(self, disconnected_node):
         print("Node ({}):: outbound_node_disconnected: Disconnected from peer node: {}".format(
@@ -72,71 +60,6 @@ class NodeServerComms(Node):
             )
 
 
-
-    def init_dh_key_exchange(self, node):
-        print("Node ({}):: init_dh_key_exchange: Starting DH key exchange with node: {}".format(
-            self.node_name,
-            node.id))
-
-        # Generate DH parameters
-        parameters = dh.generate_parameters(generator=2, key_size=1024)
-
-        # Generate private and public keys
-        private_key = parameters.generate_private_key()
-        public_key = private_key.public_key()
-
-        # Serialize public key
-        serialized_public_key = public_key.public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo
-        )
-
-        # Send public key to peer node
-        payload = {
-            'action': 'DH_KEY_EXCHANGE',
-            'public_key': serialized_public_key.decode('utf-8')
-        }
-        payload_json = json.dumps(payload, indent=2)
-        self.send_to_node(node, payload_json)
-
-        # Receive peer node's public key and generate shared key
-        data = self.receive_from_node(node, timeout=RESPONSE_TIMEOUT)
-        if data is None:
-            print("Node ({}):: init_dh_key_exchange: Timeout")
-
-    def receive_from_node(self, node, timeout):
-        # Wait for data
-        start_time = time.time()
-        while True:
-            if (time.time() - start_time) > timeout:
-                return None
-
-            data = self.pop_received_data_from_node(node)
-            if data is not None:
-                break
-
-            time.sleep(0.1)
-
-        # Deserialize data
-        in_dict = json.loads(data)
-
-        if 'action' in in_dict and in_dict['action'] == 'DH_KEY_EXCHANGE':
-            peer_public_key = serialization.load_pem_public_key(
-                in_dict['public_key'].encode('utf-8')
-            )
-
-            # Generate shared key
-            shared_key = self.private_key.exchange(
-                peer_public_key.public_numbers().y.to_bytes(256, 'big')
-            )
-
-            # Hash shared key
-            shared_key_hash = hashlib.sha256(shared_key).digest()
-
-            # Store shared key hash
-            self.shared_key = shared_key_hash
-
-        return in_dict
 
 
 class AuditServer:
@@ -353,3 +276,10 @@ if __name__ == "__main__":
         command = input("? ")
 
     aserver.stop_server()
+
+
+
+
+
+
+
