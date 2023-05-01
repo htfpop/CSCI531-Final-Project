@@ -319,13 +319,14 @@ class AuditNode:
         return True, query
 
     def update_block_chain(self, user_id, new_record):
-        new_entry = self.audit_data.add_to_user(user_id, new_record)
+        new_action = self.audit_data.create_user_action(user_id, new_record)
+        new_entry, new_root = self.audit_data.add_to_user(user_id, new_action, test=True)
         if new_entry is None:
             print("Node:: update_block_chain: Failed to add to user record, no user found.")
             return False
 
         p_block = self.blockchain.create_block(
-            self.audit_data.get_audit_root()
+            new_root
         )
 
         # Add the consensus stuff here...
@@ -350,15 +351,18 @@ class AuditNode:
         while cur_time - start_time < RESPONSE_TIMEOUT:
             consensus = self.node.check_consensus()
             if consensus:
-                print("Conensus Reached")
                 break
-            print("Conensus Check Failed: {} time".format(cur_time - start_time))
+            print("Audit Node:: update_block_chain: awaiting consensus: {} time (of {})".format(
+                cur_time - start_time, RESPONSE_TIMEOUT))
             time.sleep(1)
             cur_time = time.time()
 
         if consensus:
+            print("Audit Node:: update_block_chain: Consensus Reached")
             self.blockchain.add_block(p_block)
+            self.audit_data.add_to_user(user_id, new_action, test=False)
         else:
+            print("Audit Node:: update_block_chain: Consensus failed, rejecting add")
             return False
 
         return True
@@ -403,7 +407,12 @@ class AuditNode:
             # Decrypt
             in_data_bytes = bytes.fromhex(in_data)
             data_decrypt = self.decrypt_data(in_data_bytes, DATA_KEY)
-            plaintext_str = data_decrypt.decode()
+
+            try:
+                plaintext_str = data_decrypt.decode()
+            except UnicodeDecodeError:
+                print("Audit Node:: Import Node: Import node failed to import.")
+                return False
 
             # Check HMAC
             plaintext_dict = json.loads(plaintext_str)
@@ -412,7 +421,7 @@ class AuditNode:
             in_payload = plaintext_dict['payload']
             new_sig = self.digest_data(in_nonce + in_payload, HMAC_KEY)
             if not hmac.compare_digest(in_sig, new_sig):
-                print("Audit Node:: Import Node: Imported node data failed integrity check.")
+                print("Audit Node:: Import Node: Imported node data failed to import.")
                 return False
 
             in_dict = json.loads(in_payload)
@@ -507,7 +516,7 @@ class AuditNode:
 
 
 if __name__ == "__main__":
-    a = ['328510', 'testid_2', 'testid_3', 'testid_4']
+    a = ['400943', '328510', 'testid_3', 'testid_4']
 
     node_config_a = {
         'name': "Node A",
@@ -536,9 +545,12 @@ if __name__ == "__main__":
 
     a_node = AuditNode(config)
 
-    #a_node.import_node("./node_a_export.txt")
-    a_node.build_node_trees(a)
-    a_node.export_node("./node_a_export.txt")
+
+    if not a_node.import_node("./node_a_export_muxed.enc"):
+        print("File failed to import.")
+        a_node.start_node()
+        a_node.stop_node()
+        sys.exit(1)
 
     print(a_node.blockchain)
     print(a_node.audit_data)
@@ -557,6 +569,15 @@ if __name__ == "__main__":
         if command == "print":
             print(a_node.blockchain)
             print(a_node.audit_data)
+        if command == "save":
+            a_node.export_node("./node_a_export.enc")
+        if command == "new_user":
+            action_a = {
+                'user': "Colton",
+                'action': 'Read a thing',
+                'signature': b'F0F0F0F0'.hex()
+            }
+            a_node.update_block_chain('Colton', json.dumps(action_a, indent=2))
         command = input("? ")
 
     print("Node exiting")

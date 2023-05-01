@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="utf-8">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Query EHR</title>
+</head>
+<body>
+<h1>Admin issued query EHR data request</h1>
+
+
+<table id="q_table">
+    <tr>
+        <th style="width:100px;border:1px solid black">User ID</th>
+        <th style="width:100px;border:1px solid black">Timestamp</th>
+        <th style="width:100px;border:1px solid black">Action</th>
+    </tr>
+    {% for user_id, user_data in data.items() %}
+        {% for action_id, action_data in user_data.items() %}
+        <tr>
+            <td style="width:150px; text-align:center;border:1px solid black">{{ user_id }}</td>
+            <td style="width:200px; text-align:center;border:1px solid black">{{ user_data[action_id]['timestamp'] }}</td>
+            <td style="width:150px; text-align:center;border:1px solid black">{{ user_data[action_id]['action'] }}</td>
+        </tr>
+        {% endfor %}
+    {% endfor %}
+</table>
+
+{#<table id="q_table">#}
+{#    <tr>#}
+{#        <th style="width:100px;border:1px solid black">User ID</th>#}
+{#        <th style="width:100px;border:1px solid black">Timestamp</th>#}
+{#        <th style="width:100px;border:1px solid black">Action</th>#}
+{#    </tr>#}
+{#    {% for user_id, records in data.items() %}#}
+{#        {% for record_id, record in records.items() %}#}
+{#            {% set record_data = record|json_decode %}#}
+{#            <tr>#}
+{#                <td style="width:150px; text-align:center;border:1px solid black">{{ record_data['user_id'] }}</td>#}
+{#                <td style="width:200px; text-align:center;border:1px solid black">{{ record_data['timestamp'] }}</td>#}
+{#                <td style="width:150px; text-align:center;border:1px solid black">{{ record_data['action'] }}</td>#}
+{#            </tr>#}
+{#        {% endfor %}#}
+{#    {% endfor %}#}
+{#</table>#}
+
+<button id="dashboard" onclick="window.location.href='/auth?token={{ session['jwt_token'] }}'">Return to Admin Dashboard</button><br><br>
+
+</body>
+</html>
