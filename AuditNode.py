@@ -407,7 +407,12 @@ class AuditNode:
             # Decrypt
             in_data_bytes = bytes.fromhex(in_data)
             data_decrypt = self.decrypt_data(in_data_bytes, DATA_KEY)
-            plaintext_str = data_decrypt.decode()
+
+            try:
+                plaintext_str = data_decrypt.decode()
+            except UnicodeDecodeError:
+                print("Audit Node:: Import Node: Import node failed to import.")
+                return False
 
             # Check HMAC
             plaintext_dict = json.loads(plaintext_str)
@@ -416,7 +421,7 @@ class AuditNode:
             in_payload = plaintext_dict['payload']
             new_sig = self.digest_data(in_nonce + in_payload, HMAC_KEY)
             if not hmac.compare_digest(in_sig, new_sig):
-                print("Audit Node:: Import Node: Imported node data failed integrity check.")
+                print("Audit Node:: Import Node: Imported node data failed to import.")
                 return False
 
             in_dict = json.loads(in_payload)
@@ -540,9 +545,12 @@ if __name__ == "__main__":
 
     a_node = AuditNode(config)
 
-    a_node.import_node("./node_a_export.enc")
-    #a_node.build_node_trees(a)
-    #a_node.export_node("./node_a_export.enc")
+
+    if not a_node.import_node("./node_a_export_muxed.enc"):
+        print("File failed to import.")
+        a_node.start_node()
+        a_node.stop_node()
+        sys.exit(1)
 
     print(a_node.blockchain)
     print(a_node.audit_data)
