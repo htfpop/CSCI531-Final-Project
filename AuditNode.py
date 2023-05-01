@@ -559,6 +559,13 @@ if __name__ == "__main__":
             print(a_node.audit_data)
         if command == "save":
             a_node.export_node("./node_a_export.enc")
+        if command == "new_user":
+            action_a = {
+                'user': "Colton",
+                'action': 'Read a thing',
+                'signature': b'F0F0F0F0'.hex()
+            }
+            a_node.update_block_chain('Colton', json.dumps(action_a, indent=2))
         command = input("? ")
 
     print("Node exiting")
