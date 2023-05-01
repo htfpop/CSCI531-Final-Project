@@ -2,11 +2,10 @@
 <html lang="utf-8">
 <head>
     <meta charset="UTF-8">
-    <title>Query EHR</title>
+    <title>Admin Query EHR</title>
 </head>
     <body>
-        <h1>Patient issued query EHR data request</h1>
-
+        <h1>Admin issued query EHR data request</h1>
 
         <table id="q_table">
             <tr>
@@ -23,7 +22,7 @@
             {% endfor %}
         </table>
 
-         <button id="dashboard" onclick="window.location.href='/auth?token={{ session['jwt_token'] }}'">User Dashboard</button><br><br>
+         <button id="dashboard" onclick="window.location.href='/auth?token={{ session['jwt_token'] }}'">Return to Admin Dashboard</button><br><br>
 
     </body>
 </html>

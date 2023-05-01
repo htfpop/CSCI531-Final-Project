@@ -72,6 +72,7 @@ class AuditData:
             return None
 
     def prove_update(self, entry_data):
+        print("Prove Udpate: {}".format(entry_data))
         entry = {
             'user': entry_data['user'],
             'action': bytes.fromhex(entry_data['action']),
@@ -87,23 +88,42 @@ class AuditData:
                 break
 
         if not found_flag:
-            print("AuditData:: Prove Update: No User found. NEED TO IMPLEMENT")
-            return False
+            print("AuditData:: Prove Update: No User found. Checking New User entry")
+            if entry['proof'] != "None":
+                print("AuditData:: Prove Update: User not new on peer, inconsistency, rejecting.")
+                return False
+            else:
+                print("AuditData:; Prove Update: New User, generating record")
+                user_tree = pymerkle.MerkleTree(
+                    algorithm='sha256',
+                    encoding='utf-8',
+                    security=False)
 
-        user_tree = self.user_tree_dict[entry['user']]
+        else:
+            # User exists, check proof
+            existing_user_tree = self.user_tree_dict[entry['user']]
 
-        proof_de = pymerkle.MerkleProof.deserialize(entry['proof'])
-        try:
-            pymerkle.verify_consistency(
-                user_tree.root,
-                entry['root'],
-                proof_de
-            )
-        except pymerkle.proof.InvalidProof:
-            print("AuditData:: Prove Update: Failed on consistency verification, error.")
-            return False
+            proof_de = pymerkle.MerkleProof.deserialize(entry['proof'])
+            try:
+                pymerkle.verify_consistency(
+                    existing_user_tree.root,
+                    entry['root'],
+                    proof_de
+                )
+            except pymerkle.proof.InvalidProof:
+                print("AuditData:: Prove Update: Failed on consistency verification, error.")
+                return False
 
-        save_state = self.export()
+            # Replace actual with temp test tree
+            user_tree = pymerkle.MerkleTree(
+                algorithm='sha256',
+                encoding='utf-8',
+                security=False)
+
+            user_entry_list = self.user_entry_dict[entry['user']]
+            for user_entry in user_entry_list:
+                user_action = bytes.fromhex(user_entry['action'])
+                user_tree.append_entry(user_action)
 
         # Add new action to tree
         new_hash = user_tree.append_entry(entry['action'])
@@ -112,14 +132,23 @@ class AuditData:
             'hash': new_hash
         }
 
-        self.user_entry_dict[entry['user']].append(new_entry)
-
         if user_tree.root != entry['root']:
             print("AuditData:: Prove Update: New User root does not equal supplied root, error")
-            self.import_dict(save_state)
             return False
+        else:
+            if not found_flag:
+                self.user_entry_dict[entry['user']] = []
+                self.user_tree_dict[entry['user']] = user_tree
+                self.user_trees.append(user_tree)
+            else:
+                # Test Passed, Append to real tree
+                self.user_tree_dict[entry['user']].append_entry(entry['action'])
 
-        self.build_audit_tree()
+            # Add entry to user list
+            self.user_entry_dict[entry['user']].append(new_entry)
+
+            # Rebuild Audit Merkle Tree
+            self.build_audit_tree()
 
         return True
 
@@ -153,23 +182,69 @@ class AuditData:
         self.user_tree_dict[user_id] = new_user_tree
         self.user_entry_dict[user_id] = [new_user_entry]
 
-    def add_to_user(self, user_id, action):
+    def add_to_user(self, user_id, new_action, test=False):
         found_flag = False
         user_key = None
         new_entry_data = None
+        new_entry = None
+        user_tree_roots = []
 
         for user_key in self.user_tree_dict.keys():
-            if user_key == user_id:
+            if user_key != user_id:
+                user_root = self.user_tree_dict[user_key].root
+                user_tree_roots.append(user_root)
+            else:
+                if test:
+                    # Replace actual with temp test tree
+                    user_tree = pymerkle.MerkleTree(
+                        algorithm='sha256',
+                        encoding='utf-8',
+                        security=False)
+
+                    user_entry_list = self.user_entry_dict[user_key]
+                    for user_entry in user_entry_list:
+                        user_action = bytes.fromhex(user_entry['action'])
+                        user_tree.append_entry(user_action)
+
+                else:
+                    # Perform on actual user tree
+                    user_tree = self.user_tree_dict[user_key]
+
+                # Get Tree Status Before add
+                user_old_root = user_tree.root
+                user_old_size = user_tree.length
+
+                # Add to tree
+                entry_hash = user_tree.append_entry(new_action)
+                new_entry = {
+                    'action': new_action.hex(),
+                    'hash': entry_hash.hex()
+                }
+
+                # Generate Proof
+                proof = user_tree.prove_consistency(user_old_size, user_old_root)
+                proof_root = user_tree.root
+                new_entry_data = {
+                    'user': user_key,
+                    'action': new_action.hex(),
+                    'proof': proof.serialize(),
+                    'root': proof_root.hex()
+                }
+
+                # Add tree root to list
+                user_tree_roots.append(user_tree.root)
+
+                # Set Found Flag
                 found_flag = True
-                break
 
-        if found_flag:
-            user_tree = self.user_tree_dict[user_key]
-            new_action = self.create_user_action(user_id, action)
-
-            # Get Tree Status Before add
-            old_root = user_tree.root
-            old_size = user_tree.length
+        # Tag it or create it
+        if not found_flag:
+            print("Audit Data:: Add_to_User: Creating new user ({})".format(user_id))
+            # Create User
+            user_tree = pymerkle.MerkleTree(
+                algorithm='sha256',
+                encoding='utf-8',
+                security=False)
 
             # Add to tree
             entry_hash = user_tree.append_entry(new_action)
@@ -178,21 +253,41 @@ class AuditData:
                 'hash': entry_hash.hex()
             }
 
-            # Generate Proof
-            proof = user_tree.prove_consistency(old_size, old_root)
-            proof_root = user_tree.root
             new_entry_data = {
-                'user': user_key,
+                'user': user_id,
                 'action': new_action.hex(),
-                'proof': proof.serialize(),
-                'root': proof_root.hex()
+                'proof': "None",
+                'root': user_tree.root.hex()
             }
 
-            self.user_entry_dict[user_key].append(new_entry)
+            # Add tree root to list
+            user_tree_roots.append(user_tree.root)
 
-            self.build_audit_tree()
+            # If committing new entry (not test), create data structure entries
+            if not test:
+                self.user_entry_dict[user_id] = []
+                self.user_tree_dict[user_id] = user_tree
+                self.user_trees.append(user_tree)
 
-        return new_entry_data
+        if not test:
+            # If not a test, add action to user entry
+            self.user_entry_dict[user_id].append(new_entry)
+            audit_root = self.build_audit_tree()
+        else:
+            audit_root = self.build_audit_root(user_tree_roots)
+
+        return new_entry_data, audit_root
+
+    def build_audit_root(self, user_tree_roots):
+        audit_tree = pymerkle.MerkleTree(
+            algorithm='sha256',
+            encoding='utf-8',
+            security=False)
+
+        for tree_root in user_tree_roots:
+            audit_tree.append_entry(tree_root)
+
+        return audit_tree.root
 
     def build_audit_tree(self):
         audit_tree = pymerkle.MerkleTree(
@@ -204,6 +299,8 @@ class AuditData:
             audit_tree.append_entry(user_entry.root)
 
         self.audit_tree = audit_tree
+
+        return audit_tree.root
 
     def query_user(self, user_id):
         if user_id:
@@ -223,7 +320,7 @@ class AuditData:
 
                 for entry_idx, entry in enumerate(self.user_entry_dict[user_key]):
                     action = entry['action']
-                    action_decode = bytes.fromhex(action).decode()
+                    action_decode = json.loads(bytes.fromhex(action).decode())  # changed 4/30
                     user_dict[entry_idx] = action_decode
 
                 return user_dict
@@ -235,7 +332,7 @@ class AuditData:
                 user_dict = {}
                 for entry_idx, entry in enumerate(self.user_entry_dict[user_key]):
                     action = entry['action']
-                    action_decode = bytes.fromhex(action).decode()
+                    action_decode = json.loads(bytes.fromhex(action).decode()) # changed 4/30
                     user_dict[entry_idx] = action_decode
 
                 all_users_dict[user_key] = user_dict

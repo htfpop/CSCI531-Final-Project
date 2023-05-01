@@ -1,10 +1,11 @@
+import json
 import os
 import random
 from urllib.parse import urlencode
 import jwt
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import Flask, render_template, session, request, jsonify, make_response, redirect, url_for, flash, json
+from flask import Flask, render_template, session, request, jsonify, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.sql import func
 import bcrypt
@@ -45,7 +46,6 @@ ACT_CHANGE = 0xF00D4DAD
 ACT_QUERY = 0xFACE0FFF
 ACT_PRINT = 0xBEEF4DAD
 ACT_COPY = 0xCAFECAFE
-
 
 class Patients(db.Model):
     """
@@ -99,6 +99,7 @@ class Patients(db.Model):
             return False
         else:
             new_user = Patients(firstname=first, lastname=last, email=email, password=password)
+            aserver.append_user_record(user_id=str(new_user.get_id(new_user)), action="Create")
             db.session.add(new_user)
             db.session.commit()
             return True
@@ -165,6 +166,69 @@ def token_required(function):
     return decorated
 
 
+@app.route("/admin-view-all-ehr")
+@token_required
+def admin_view_all():
+    token = token_handle()
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    email = payload['email']
+
+    user: Patients = Patients.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({'ERROR': f'User with {email} not in database'})
+
+    id = user.get_id(user)
+
+    # special get method for admin only
+    out_dict = aserver.query_users(action='ADMIN_QUERY_ALL')
+
+    mydict1 = out_dict['record']
+    #json_string = json.dumps(mydict1)
+    #print(mydict1)
+
+    #print(mydict1[0]['user_id'])
+
+    # append to admin record
+    aserver.append_user_record(user_id=str(id), action="QUERY")
+
+    # j_object = json.dumps(out_dict, indent=3)
+    # print(j_object)
+
+    return render_template('03_Query_All_EHR_Admin.html', data=mydict1)
+
+
+@app.route('/admin-query-ehr-data', methods=['POST'])
+@token_required
+def admin_query_ehr():
+    """
+    This route will handle a user querying their own EHR data - PROTOTYPE ONLY
+    <WARN> Limited capabilities and set up only front-end interface for our course <WARN>
+    :return: Render confirmation webpage
+    """
+    token = token_handle()
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    email = payload['email']
+    uid = request.form['admin-query-ehr-textbox']
+
+    user: Patients = Patients.query.filter_by(id=int(uid)).first()
+    admin: Patients = Patients.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({'ERROR': f'User with {uid} not in database'})
+    if not admin:
+        return jsonify({'ERROR': f'Admin with {email} not in database'})
+
+    a_id = admin.get_id(admin)
+    uid = user.get_id(user)
+
+    out_dict = aserver.query_user(user_id=str(uid), action="placeholder")
+    aserver.append_user_record(user_id=str(uid), action="ADMIN_USER_QUERY")
+    aserver.append_user_record(user_id=str(a_id), action="ADMIN_USER_QUERY")
+
+    return render_template('03_Query_User_EHR_Admin.html', data=out_dict)
+
+
 def token_handle():
     """
     Generic method that handles updating JWT Token if a valid link was processed
@@ -206,7 +270,7 @@ def create_ehr_data():
 
     id = user.get_id(user)
 
-    aserver.append_user_record(user_id=str(id), action="placeholder")
+    aserver.append_user_record(user_id=str(id), action="Create_EHR")
 
     return render_template('00_Create_EHR.html')
 
@@ -229,6 +293,7 @@ def delete_ehr():
         return jsonify({'ERROR': f'User with {email} not in database'})
 
     id = user.get_id(user)
+    aserver.append_user_record(user_id=str(id), action="DELETE")
 
     return render_template('01_Delete_EHR.html')
 
@@ -251,6 +316,7 @@ def change_ehr():
         return jsonify({'ERROR': f'User with {email} not in database'})
 
     id = user.get_id(user)
+    aserver.append_user_record(user_id=str(id), action="CHANGE")
 
     return render_template('02_Change_EHR.html')
 
@@ -275,9 +341,32 @@ def query_ehr():
     id = user.get_id(user)
 
     out_dict = aserver.query_user(user_id=str(id), action="placeholder")
-    return json.dumps(out_dict, indent=2)
+    aserver.append_user_record(user_id=str(id), action="QUERY")
 
-    #return render_template('03_Query_EHR.html')
+    return render_template('03_Query_EHR.html', data=out_dict)
+
+
+@app.route('/user-logout')
+@token_required
+def logout():
+    token = token_handle()
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    email = payload['email']
+
+    user: Patients = Patients.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({'ERROR': f'User with {email} not in database'})
+
+    session['jwt_token'] = None
+    session['uid'] = None
+    session['Logged_In'] = False
+    session['admin'] = False
+
+    id = user.get_id(user)
+    aserver.append_user_record(user_id=str(id), action="LOGOUT")
+
+    return redirect('/')
 
 
 @app.route('/print-ehr-data')
@@ -298,6 +387,7 @@ def print_ehr():
         return jsonify({'ERROR': f'User with {email} not in database'})
 
     id = user.get_id(user)
+    aserver.append_user_record(user_id=str(id), action="PRINT")
 
     return render_template('04_Print_EHR.html')
 
@@ -320,6 +410,7 @@ def copy_ehr():
         return jsonify({'ERROR': f'User with {email} not in database'})
 
     id = user.get_id(user)
+    aserver.append_user_record(user_id=str(id), action="COPY")
 
     return render_template('05_Copy_EHR.html')
 
@@ -353,6 +444,10 @@ def auth():
     session['jwt_token'] = new_token
     session['uid'] = id
 
+    if session['Logged_In'] is False:
+        aserver.append_user_record(user_id=str(id), action='LOGIN')
+        session['Logged_In'] = True
+
     # admin dashboard set during /login route
     if session['admin']:
         return render_template('admin_dash.html')
@@ -375,6 +470,7 @@ def login():
     Flask login page
     :return: render of EHR login page
     """
+    session['Logged_In'] = False
     return render_template('login.html')
 
 
@@ -487,6 +583,7 @@ def db_check():
 
 
 if __name__ == '__main__':
+    # test()
     with app.app_context():
         db.create_all()
         db_check()
