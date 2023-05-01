@@ -12,8 +12,13 @@
     <button id="admin-view-all-ehr" onclick="window.location.href='/admin-view-all-ehr?token={{ session['jwt_token'] }}'">View All EHR Audit Data</button><br><br>
 
     <!-- Query text box -->
-    <button id="admin-query-ehr-button" onclick="window.location.href='/admin-query-ehr-data?token={{ session['jwt_token'] }}&query=' + document.getElementById('query-ehr-textbox').value">Query User</button>
-    <input type="text" id="query-ehr-textbox" name="query-ehr-data" placeholder="Enter User ID...">
+    <form action="/admin-query-ehr-data?token={{ session['jwt_token'] }}" method="POST">
+        <label for="admin-query-ehr-textbox"></label>
+        <button type="submit">Query EHR data</button>
+        <input type="text" id="admin-query-ehr-textbox" name="admin-query-ehr-textbox" placeholder="Enter User ID to query" required style="text-align:center"><br><br>
+    </form>
+    <!-- Log out -->
+    <button id="user-logout" onclick="window.location.href='/user-logout?token={{ session['jwt_token'] }}'">Log out</button><br><br>
 
 </div>
 <div id="PatientInfo" style="visibility: hidden">

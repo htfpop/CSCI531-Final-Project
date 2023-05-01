@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="utf-8">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Query EHR</title>
+</head>
+    <body>
+        <h1>Admin issued query EHR data request</h1>
+
+        <table id="q_table">
+            <tr>
+                <th style="width:100px;border:1px solid black">User ID</th>
+                <th style="width:100px;border:1px solid black">Timestamp</th>
+                <th style="width:100px;border:1px solid black">Action</th>
+            </tr>
+            {% for key, value in data['record'].items() %}
+                <tr>
+                    <td style="width:150px; text-align:center;border:1px solid black">{{ value['user_id'] }}</td>
+                    <td style="width:200px; text-align:center;border:1px solid black">{{ value['timestamp'] }}</td>
+                    <td style="width:150px; text-align:center;border:1px solid black">{{ value['action'] }}</td>
+                </tr>
+            {% endfor %}
+        </table>
+
+         <button id="dashboard" onclick="window.location.href='/auth?token={{ session['jwt_token'] }}'">Return to Admin Dashboard</button><br><br>
+
+    </body>
+</html>
