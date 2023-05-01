@@ -540,9 +540,9 @@ if __name__ == "__main__":
 
     a_node = AuditNode(config)
 
-    a_node.import_node("./node_a_export.txt")
+    a_node.import_node("./node_a_export.enc")
     #a_node.build_node_trees(a)
-    #a_node.export_node("./node_a_export.txt")
+    #a_node.export_node("./node_a_export.enc")
 
     print(a_node.blockchain)
     print(a_node.audit_data)

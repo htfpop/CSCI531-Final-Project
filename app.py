@@ -1,3 +1,4 @@
+import json
 import os
 import random
 from urllib.parse import urlencode
@@ -45,7 +46,6 @@ ACT_CHANGE = 0xF00D4DAD
 ACT_QUERY = 0xFACE0FFF
 ACT_PRINT = 0xBEEF4DAD
 ACT_COPY = 0xCAFECAFE
-
 
 class Patients(db.Model):
     """
@@ -99,7 +99,7 @@ class Patients(db.Model):
             return False
         else:
             new_user = Patients(firstname=first, lastname=last, email=email, password=password)
-            # aserver.add_user(id=str(new_user.get_id()))
+            aserver.append_user_record(user_id=str(new_user.get_id(new_user)), action="Create")
             db.session.add(new_user)
             db.session.commit()
             return True
@@ -183,10 +183,19 @@ def admin_view_all():
     # special get method for admin only
     out_dict = aserver.query_users(action='ADMIN_QUERY_ALL')
 
+    mydict1 = out_dict['record']
+    #json_string = json.dumps(mydict1)
+    #print(mydict1)
+
+    #print(mydict1[0]['user_id'])
+
     # append to admin record
     aserver.append_user_record(user_id=str(id), action="QUERY")
 
-    return render_template('03_Query_All_EHR_Admin.html', data=out_dict)
+    # j_object = json.dumps(out_dict, indent=3)
+    # print(j_object)
+
+    return render_template('03_Query_All_EHR_Admin.html', data=mydict1)
 
 
 @app.route('/admin-query-ehr-data', methods=['POST'])
@@ -217,7 +226,7 @@ def admin_query_ehr():
     aserver.append_user_record(user_id=str(uid), action="ADMIN_USER_QUERY")
     aserver.append_user_record(user_id=str(a_id), action="ADMIN_USER_QUERY")
 
-    return render_template('03_Query_All_EHR_Admin.html', data=out_dict)
+    return render_template('03_Query_User_EHR_Admin.html', data=out_dict)
 
 
 def token_handle():
