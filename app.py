@@ -4,7 +4,7 @@ from urllib.parse import urlencode
 import jwt
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import Flask, render_template, session, request, jsonify, make_response, redirect, url_for, flash, json
+from flask import Flask, render_template, session, request, jsonify, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.sql import func
 import bcrypt
@@ -99,6 +99,7 @@ class Patients(db.Model):
             return False
         else:
             new_user = Patients(firstname=first, lastname=last, email=email, password=password)
+            # aserver.add_user(id=str(new_user.get_id()))
             db.session.add(new_user)
             db.session.commit()
             return True
@@ -163,6 +164,60 @@ def token_required(function):
         return function(*args, **kwargs)
 
     return decorated
+
+
+@app.route("/admin-view-all-ehr")
+@token_required
+def admin_view_all():
+    token = token_handle()
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    email = payload['email']
+
+    user: Patients = Patients.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({'ERROR': f'User with {email} not in database'})
+
+    id = user.get_id(user)
+
+    # special get method for admin only
+    out_dict = aserver.query_users(action='ADMIN_QUERY_ALL')
+
+    # append to admin record
+    aserver.append_user_record(user_id=str(id), action="QUERY")
+
+    return render_template('03_Query_All_EHR_Admin.html', data=out_dict)
+
+
+@app.route('/admin-query-ehr-data', methods=['POST'])
+@token_required
+def admin_query_ehr():
+    """
+    This route will handle a user querying their own EHR data - PROTOTYPE ONLY
+    <WARN> Limited capabilities and set up only front-end interface for our course <WARN>
+    :return: Render confirmation webpage
+    """
+    token = token_handle()
+    payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    email = payload['email']
+    uid = request.form['admin-query-ehr-textbox']
+
+    user: Patients = Patients.query.filter_by(id=int(uid)).first()
+    admin: Patients = Patients.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({'ERROR': f'User with {uid} not in database'})
+    if not admin:
+        return jsonify({'ERROR': f'Admin with {email} not in database'})
+
+    a_id = admin.get_id(admin)
+    uid = user.get_id(user)
+
+    out_dict = aserver.query_user(user_id=str(uid), action="placeholder")
+    aserver.append_user_record(user_id=str(uid), action="ADMIN_USER_QUERY")
+    aserver.append_user_record(user_id=str(a_id), action="ADMIN_USER_QUERY")
+
+    return render_template('03_Query_All_EHR_Admin.html', data=out_dict)
 
 
 def token_handle():
@@ -280,6 +335,7 @@ def query_ehr():
     aserver.append_user_record(user_id=str(id), action="QUERY")
 
     return render_template('03_Query_EHR.html', data=out_dict)
+
 
 @app.route('/user-logout')
 @token_required

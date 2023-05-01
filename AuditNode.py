@@ -507,7 +507,7 @@ class AuditNode:
 
 
 if __name__ == "__main__":
-    a = ['328510', 'testid_2', 'testid_3', 'testid_4']
+    a = ['400943', '328510', 'testid_3', 'testid_4']
 
     node_config_a = {
         'name': "Node A",
@@ -536,9 +536,9 @@ if __name__ == "__main__":
 
     a_node = AuditNode(config)
 
-    #a_node.import_node("./node_a_export.txt")
-    a_node.build_node_trees(a)
-    a_node.export_node("./node_a_export.txt")
+    a_node.import_node("./node_a_export.txt")
+    #a_node.build_node_trees(a)
+    #a_node.export_node("./node_a_export.txt")
 
     print(a_node.blockchain)
     print(a_node.audit_data)
