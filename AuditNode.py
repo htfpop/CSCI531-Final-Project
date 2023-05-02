@@ -22,6 +22,8 @@ RESPONSE_TIMEOUT = 10
 VOTE_THRESHOLD = .5
 
 DATA_KEY = b"\x16\x93=f@\x0b\x84\xb9R'\xb7_\x11\xa9\x9a\x1a\x90\xf9\x10=\x17\x94r\x18\x92\xe9<zIk\x07!"
+NODE_DATA_KEY = b"\x16\x93=f@\x0b\x84\xb9R'\xb7_\x11\xa9\x9a\x1a\x90\xf9\x10=\x17\x94r\x18\x92\xe9<zIk\x07!"
+SERVER_DATA_KEY = b"\x16\x93=f@\x0b\x84\xb9R'\xb7_\x11\xa9\x9a\x1a\x90\xf9\x10=\x17\x94r\x18\x92\xe9<zIk\x07!"
 HMAC_KEY = b"L\xc0I\xa8\xf8x\xfc\x12iBuA\xac\xbd\x1a\x08\xe1\x042\xa6u\xbb\xdf0\xb8k\x1e\xba\xc5\xa2\xb3\xd1"
 
 class NodeServerComms(Node):
@@ -65,8 +67,25 @@ class NodeServerComms(Node):
 
     def node_message(self, node, data):
         print("Node:: node_message: Recieved message from node: {}".format(node.id))
+        print("Data (type: {}): {}".format(type(data), data))
 
-        in_dict = data
+        # Decrypt Payload
+        in_data_bytes = bytes.fromhex(data)
+        data_dec = decrypt_data(in_data_bytes, SERVER_DATA_KEY)
+        in_plaintext = data_dec.decode()
+        in_payload_pkg = json.loads(in_plaintext)
+
+        # Break apart Payload
+        in_nonce = in_payload_pkg['nonce']
+        in_sig = in_payload_pkg['signature']
+        in_payload = in_payload_pkg['payload']
+        new_sig = digest_data(in_nonce + in_payload, HMAC_KEY)
+        if not hmac.compare_digest(in_sig, new_sig):
+            print("Node: Recieved message failed integrity check")
+            return
+
+        in_dict = json.loads(in_payload)
+        print("In Dict (type: {}): {}".format(type(in_dict), in_dict))
 
         if in_dict['action'] == 'ADD_TO_USER':
             print("Audit Node:: Node Message: Received request from server node ({}) to add user ({})".format(
@@ -81,7 +100,6 @@ class NodeServerComms(Node):
                 'status': status
             }
             resp_json = json.dumps(resp_data, indent=2)
-            self.send_to_node(node, resp_json)
             print("Audit Node:: Node Message: Responding with status ({}) server node ({})".format(
                 status,
                 node.id))
@@ -100,7 +118,6 @@ class NodeServerComms(Node):
                 'data': data
             }
             resp_json = json.dumps(resp_data, indent=2)
-            self.send_to_node(node, resp_json)
         elif in_dict['action'] == 'QUERY_USERS':
             print("Audit Node:: Node Message: Received query request from server node ({}) for all user data".format(
                 node.id))
@@ -114,7 +131,24 @@ class NodeServerComms(Node):
                 'data': data
             }
             resp_json = json.dumps(resp_data, indent=2)
-            self.send_to_node(node, resp_json)
+        else:
+            print("Audit Node:: Node Message: Received unknown request from server.")
+            return
+
+        # Encrypt Payload
+        nonce = random.randbytes(8).hex().upper()
+        signature = digest_data(nonce + resp_json, HMAC_KEY)
+        payload = {
+            'nonce': nonce,
+            'payload': resp_json,
+            'signature': signature
+        }
+        payload_pkg = json.dumps(payload, indent=2)
+
+        payload_bytes = payload_pkg.encode()
+        payload_enc = encrypt_data(payload_bytes, SERVER_DATA_KEY).hex().upper()
+
+        self.send_to_node(node, payload_enc)
 
     def add_server_identity(self, identity):
         self.server_identities.append(identity)
@@ -191,15 +225,29 @@ class NodeComms(Node):
 
     def node_message(self, node, data):
         print("Node:: node_message: Recieved message from node: {}".format(node.id))
+        print("Data: (Type: {}): {}".format(type(data), data))
 
         # Decrypt Payload
+        in_data_bytes = bytes.fromhex(data)
+        data_dec = decrypt_data(in_data_bytes, NODE_DATA_KEY)
+        in_plaintext = data_dec.decode()
+        in_payload_pkg = json.loads(in_plaintext)
 
-        in_dict = data
+        # Break apart Payload
+        in_nonce = in_payload_pkg['nonce']
+        in_sig = in_payload_pkg['signature']
+        in_payload = in_payload_pkg['payload']
+        new_sig = digest_data(in_nonce + in_payload, HMAC_KEY)
+        if not hmac.compare_digest(in_sig, new_sig):
+            print("Node: Recieved message failed integrity check")
+            return
+
+        in_dict = json.loads(in_payload)
+        print("In Dict (type: {}): {}".format(type(in_dict), in_dict))
 
         if in_dict['action'] == 'ADD_REQUEST':
-            print("Audit Node:: Node Message: Received append request from node ({}) for user ({})".format(
-                node.id,
-                in_dict['data']['user_id']))
+            print("Audit Node:: Node Message: Received append request from node ({})".format(
+                node.id))
             vote = self.func_prove_update(in_dict['data'])
 
             resp_data = {
@@ -209,12 +257,20 @@ class NodeComms(Node):
             resp_json = json.dumps(resp_data, indent=2)
 
             # Encrypt Payload
+            nonce = random.randbytes(8).hex().upper()
+            signature = digest_data(nonce + resp_json, HMAC_KEY)
+            payload = {
+                'nonce': nonce,
+                'payload': resp_json,
+                'signature': signature
+            }
+            payload_pkg = json.dumps(payload, indent=2)
 
-            self.send_to_node(node, resp_json)
+            payload_bytes = payload_pkg.encode()
+            payload_enc = encrypt_data(payload_bytes, NODE_DATA_KEY).hex().upper()
+
+            self.send_to_node(node, payload_enc)
         elif in_dict['action'] == 'RESPONSE':
-
-            # Decrypt Payload
-
             print("Audit Node:: Node Message: Received response vote ({}) from node ({})".format(
                 in_dict['vote'],
                 node.id))
@@ -399,9 +455,22 @@ class AuditNode:
                 'entry': new_entry
             }
         }
-        out_json = json.dumps(out_dict, indent=2)
+        resp_json = json.dumps(out_dict, indent=2)
 
-        self.node.send_to_peers(out_json)
+        # Encrypt Payload
+        nonce = random.randbytes(8).hex().upper()
+        signature = digest_data(nonce + resp_json, HMAC_KEY)
+        payload = {
+            'nonce': nonce,
+            'payload': resp_json,
+            'signature': signature
+        }
+        payload_pkg = json.dumps(payload, indent=2)
+
+        payload_bytes = payload_pkg.encode()
+        payload_enc = encrypt_data(payload_bytes, NODE_DATA_KEY).hex().upper()
+
+        self.node.send_to_peers(payload_enc)
 
         # Await responses
         consensus = False
