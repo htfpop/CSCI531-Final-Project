@@ -21,8 +21,9 @@ class AuditData:
 
         user_strings = []
 
-        for idx, user_tree in enumerate(self.user_trees):
-            user_str = "User {}".format(idx)
+        for user_key in self.user_tree_dict.keys():
+            user_tree = self.user_tree_dict[user_key]
+            user_str = "User: {}".format(user_key)
             user_str = user_str + "\n\tLength:{}".format(user_tree.length)
             user_str = user_str + "\n\tRoot Hash:{}".format(user_tree.root)
 

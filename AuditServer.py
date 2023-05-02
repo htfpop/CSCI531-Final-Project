@@ -81,7 +81,7 @@ class AuditServer:
         )
 
     def new_node_record(self, in_data_dict):
-        print("New_Node_Record: Received new record entry: {}".format(
+        print("Audit Server:: New_Node_Record: Received new record entry: {}".format(
             in_data_dict
         ))
         if (in_data_dict['server_port'] != 0) and (in_data_dict['server_port'] != self.port):
@@ -136,7 +136,7 @@ class AuditServer:
     def perform_query(self, payload):
         # Choose random node to communicate with
         if len(self.node_identities) == 0:
-            print("Server Failure: No nodes to communicate with, error. ")
+            print("Audit Server:: Server Failure: No nodes to communicate with, error. ")
             return False
 
         node_choice = random.choice(self.node_identities)
@@ -182,7 +182,7 @@ class AuditServer:
 
         node_choice = random.choice(self.node_identities)
 
-        print("Append User: Sending to Node: {}".format(node_choice))
+        print("Audit Server:: Append User: Sending to Node: {}".format(node_choice))
 
         self.server.connect_with_node(node_choice['ip'], node_choice['server_port'])
         time.sleep(1)
@@ -191,24 +191,24 @@ class AuditServer:
         timeout = 20
         idx = 0
         while (self.status is False) and (idx < timeout):
-            print("Waiting on return status")
+            print("\tWaiting on return status")
             idx = idx + 1
             time.sleep(1)
 
         if self.status:
-            print("Server Success: Record added to blockchain")
+            print("Audit Server:: Server Success: Record added to blockchain")
             return True
         else:
-            print("Server Failure: Record not added, error.")
+            print("Audit Server:: Server Failure: Record not added, error.")
             return False
 
     def start(self):
-        print("Server: Starting Server Nodes")
+        print("Audit Server:: Start: Starting Server Nodes")
         self.server.start()
         self.not_server.start()
 
     def stop_server(self):
-        print("Server: Stopping Server Nodes...")
+        print("Audit Server:: Stop: Stopping Server Nodes...")
         self.server.stop()
         self.not_server.stop()
 

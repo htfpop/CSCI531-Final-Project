@@ -18,7 +18,7 @@ import AuditData
 import BlockChain
 import AuditNotifier
 
-RESPONSE_TIMEOUT = 20
+RESPONSE_TIMEOUT = 10
 VOTE_THRESHOLD = .5
 
 DATA_KEY = b"\x16\x93=f@\x0b\x84\xb9R'\xb7_\x11\xa9\x9a\x1a\x90\xf9\x10=\x17\x94r\x18\x92\xe9<zIk\x07!"
@@ -65,13 +65,13 @@ class NodeServerComms(Node):
 
     def node_message(self, node, data):
         print("Node:: node_message: Recieved message from node: {}".format(node.id))
-        print("\t(data): {} (type: {})".format(data, type(data)))
 
         in_dict = data
 
-        print(f'\n\n{in_dict}\n\n')
-
         if in_dict['action'] == 'ADD_TO_USER':
+            print("Audit Node:: Node Message: Received request from server node ({}) to add user ({})".format(
+                node.id,
+                in_dict['data']['user_id']))
             user_id = in_dict['data']['user_id']
             user_action = in_dict['data']['action']
             status = self.func_add_action(user_id, user_action)
@@ -82,7 +82,13 @@ class NodeServerComms(Node):
             }
             resp_json = json.dumps(resp_data, indent=2)
             self.send_to_node(node, resp_json)
+            print("Audit Node:: Node Message: Responding with status ({}) server node ({})".format(
+                status,
+                node.id))
         elif in_dict['action'] == 'QUERY_USER':
+            print("Audit Node:: Node Message: Received query request from server node ({}) for user ({}) data".format(
+                node.id,
+                in_dict['data']['user_id']))
             user_id = in_dict['data']['user_id']
             user_action = in_dict['data']['action']
 
@@ -96,6 +102,8 @@ class NodeServerComms(Node):
             resp_json = json.dumps(resp_data, indent=2)
             self.send_to_node(node, resp_json)
         elif in_dict['action'] == 'QUERY_USERS':
+            print("Audit Node:: Node Message: Received query request from server node ({}) for all user data".format(
+                node.id))
             user_action = in_dict['data']['action']
 
             status, data = self.func_query_user(None, user_action)
@@ -183,11 +191,15 @@ class NodeComms(Node):
 
     def node_message(self, node, data):
         print("Node:: node_message: Recieved message from node: {}".format(node.id))
-        print("\t(data): {} (type: {})".format(data, type(data)))
+
+        # Decrypt Payload
 
         in_dict = data
 
         if in_dict['action'] == 'ADD_REQUEST':
+            print("Audit Node:: Node Message: Received append request from node ({}) for user ({})".format(
+                node.id,
+                in_dict['data']['user_id']))
             vote = self.func_prove_update(in_dict['data'])
 
             resp_data = {
@@ -195,8 +207,17 @@ class NodeComms(Node):
                 'vote': vote
             }
             resp_json = json.dumps(resp_data, indent=2)
+
+            # Encrypt Payload
+
             self.send_to_node(node, resp_json)
         elif in_dict['action'] == 'RESPONSE':
+
+            # Decrypt Payload
+
+            print("Audit Node:: Node Message: Received response vote ({}) from node ({})".format(
+                in_dict['vote'],
+                node.id))
             self.update_node_votes(
                 node.id,
                 in_dict['vote']
@@ -239,6 +260,44 @@ class NodeComms(Node):
         if node not in self.all_nodes:
             if node.id in self.peer_status.keys():
                 self.peer_status.pop(node.id)
+
+
+def encrypt_data(data_in, key):
+    cipher = Cipher(algorithms.AES256(key), modes.ECB())
+    padder = padding.PKCS7(256).padder()
+
+    encryptor = cipher.encryptor()
+    padder_data = padder.update(data_in)
+    padder_data += padder.finalize()
+
+    ct_out = encryptor.update(padder_data) + encryptor.finalize()
+
+    return ct_out
+
+
+def decrypt_data(ct_in, key):
+    cipher = Cipher(algorithms.AES256(key), modes.ECB())
+    unpadder = padding.PKCS7(256).unpadder()
+
+    decryptor = cipher.decryptor()
+    pt = decryptor.update(ct_in) + decryptor.finalize()
+
+    unpadderdata = unpadder.update(pt)
+    unpadderdata += unpadder.finalize()
+
+    pt_out = unpadderdata
+
+    return pt_out
+
+
+def digest_data(message, key):
+    signature = hmac.new(
+        key,
+        msg=message.encode(),
+        digestmod=hashlib.sha256
+    ).hexdigest().upper()
+
+    return signature
 
 
 class AuditNode:
@@ -303,11 +362,11 @@ class AuditNode:
     def query_user(self, user_id, new_record):
         if user_id:
             # Search for user and report results
-            print("Node:: Query User: Received request to query user ({})".format(user_id))
+            print("Audit Node:: Query User: Received request to query user ({})".format(user_id))
 
         else:
             # Return all user data
-            print("Node:: Query User: Received request to query all users")
+            print("Audit Node:: Query User: Received request to query all users")
 
         record = self.audit_data.query_user(user_id)
 
@@ -322,7 +381,7 @@ class AuditNode:
         new_action = self.audit_data.create_user_action(user_id, new_record)
         new_entry, new_root = self.audit_data.add_to_user(user_id, new_action, test=True)
         if new_entry is None:
-            print("Node:: update_block_chain: Failed to add to user record, no user found.")
+            print("Audit Node:: update_block_chain: Failed to add to user record, no user found.")
             return False
 
         p_block = self.blockchain.create_block(
@@ -380,7 +439,7 @@ class AuditNode:
 
         # Generate HMAC signature
         nonce = random.randbytes(8).hex().upper()
-        signature = self.digest_data(nonce + export_str, HMAC_KEY)
+        signature = digest_data(nonce + export_str, HMAC_KEY)
         out_dict = {
             'nonce': nonce,
             'payload': export_str,
@@ -390,7 +449,7 @@ class AuditNode:
 
         # Encrypt Output
         export_bytes = export_export_pkg.encode()
-        export_encrypt = self.encrypt_data(export_bytes, DATA_KEY)
+        export_encrypt = encrypt_data(export_bytes, DATA_KEY)
         export_encrypt_hex = export_encrypt.hex()
 
         with open(filepath, "w") as out_file:
@@ -406,7 +465,7 @@ class AuditNode:
         if in_data:
             # Decrypt
             in_data_bytes = bytes.fromhex(in_data)
-            data_decrypt = self.decrypt_data(in_data_bytes, DATA_KEY)
+            data_decrypt = decrypt_data(in_data_bytes, DATA_KEY)
 
             try:
                 plaintext_str = data_decrypt.decode()
@@ -419,7 +478,7 @@ class AuditNode:
             in_nonce = plaintext_dict['nonce']
             in_sig = plaintext_dict['signature']
             in_payload = plaintext_dict['payload']
-            new_sig = self.digest_data(in_nonce + in_payload, HMAC_KEY)
+            new_sig = digest_data(in_nonce + in_payload, HMAC_KEY)
             if not hmac.compare_digest(in_sig, new_sig):
                 print("Audit Node:: Import Node: Imported node data failed to import.")
                 return False
@@ -479,41 +538,6 @@ class AuditNode:
         )
         self.blockchain.add_block(p_block)
 
-    def encrypt_data(self, data_in, key):
-        cipher = Cipher(algorithms.AES256(key), modes.ECB())
-        padder = padding.PKCS7(256).padder()
-
-        encryptor = cipher.encryptor()
-        padder_data = padder.update(data_in)
-        padder_data += padder.finalize()
-
-        ct_out = encryptor.update(padder_data) + encryptor.finalize()
-
-        return ct_out
-
-    def decrypt_data(self, ct_in, key):
-        cipher = Cipher(algorithms.AES256(key), modes.ECB())
-        unpadder = padding.PKCS7(256).unpadder()
-
-        decryptor = cipher.decryptor()
-        pt = decryptor.update(ct_in) + decryptor.finalize()
-
-        unpadderdata = unpadder.update(pt)
-        unpadderdata += unpadder.finalize()
-
-        pt_out = unpadderdata
-
-        return pt_out
-
-    def digest_data(self, message, key):
-        signature = hmac.new(
-            key,
-            msg=message.encode(),
-            digestmod=hashlib.sha256
-        ).hexdigest().upper()
-
-        return signature
-
 
 if __name__ == "__main__":
     a = ['400943', '328510', 'testid_3', 'testid_4']
@@ -545,8 +569,7 @@ if __name__ == "__main__":
 
     a_node = AuditNode(config)
 
-
-    if not a_node.import_node("./node_a_export_muxed.enc"):
+    if not a_node.import_node("./node_a_export.enc"):
         print("File failed to import.")
         a_node.start_node()
         a_node.stop_node()
